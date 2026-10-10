@@ -197,7 +197,7 @@
     <div class="topbar-spacer"></div>
     <a href="kitchen.html">厨房</a>
     <a href="admin.html">お会計</a>
-    <span class="demo-label">デモ注文</span>
+    <span class="demo-label">リアルタイム注文</span>
   </header>
   <main>
     <section class="welcome">
@@ -250,9 +250,9 @@
     </div>
   </footer>
 
+  <script type="module" id="firebaseSyncScript" src="firebase-sync.js"></script>
   <script>
     (() => {
-      const STORAGE_KEY = "ajimaru-kitchen-demo-orders-v1";
       const MENU = [
         { id: 1, category: "定食", name: "唐揚げ定食", price: 800, emoji: "🍱", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
         { id: 2, category: "定食", name: "あじまる唐揚げ定食", price: 900, emoji: "🍱", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
@@ -294,7 +294,10 @@
       let allergy = "なし";
       let memberPricing = false;
       let receiptNeeded = false;
-      let orders = loadOrders();
+      let firebaseReady = false;
+      let firebaseError = "";
+      let orderPending = false;
+      let orders = [];
 
       function escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, character => ({
@@ -306,29 +309,6 @@
         noticeElement.textContent = message;
         if (isError) noticeElement.setAttribute("role", "alert");
         else noticeElement.removeAttribute("role");
-      }
-      function loadOrders() {
-        try {
-          const stored = localStorage.getItem(STORAGE_KEY);
-          if (!stored) return [];
-          const parsed = JSON.parse(stored);
-          if (!Array.isArray(parsed)) throw new Error("注文データの形式が正しくありません。");
-          return parsed;
-        } catch (error) {
-          showNotice(`注文履歴を読み込めませんでした（${error.message}）`, true);
-          return [];
-        }
-      }
-      function saveOrders() {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
-          noticeElement.textContent = "";
-          noticeElement.removeAttribute("role");
-        } catch (error) {
-          showNotice(`注文を保存できませんでした。ブラウザーの保存領域を確認してください（${error.message}）`, true);
-          return false;
-        }
-        return true;
       }
       function availableCount(item) {
         return cart.get(item.id)?.quantity || 0;
@@ -401,8 +381,14 @@
         document.getElementById("cartTotal").textContent = yen(calculateTotal());
         document.getElementById("cartMeta").textContent = `${count}品 ・ ${people}名`;
         const submit = document.getElementById("submitOrder");
-        submit.disabled = count === 0;
-        submit.innerHTML = count ? `注文を送信<span>${count}品 ・ 内容をご確認ください</span>` : `注文を送信<span>メニューをお選びください</span>`;
+        submit.disabled = count === 0 || orderPending || !firebaseReady;
+        submit.innerHTML = orderPending
+          ? `送信中…<span>注文を送っています</span>`
+          : !firebaseReady
+            ? `注文システム接続中<span>${escapeHtml(firebaseError || "接続後に注文できます")}</span>`
+            : count
+              ? `注文を送信<span>${count}品 ・ 内容をご確認ください</span>`
+              : `注文を送信<span>メニューをお選びください</span>`;
       }
       function renderHistory() {
         const history = orders.filter(order => String(order.table) === String(table)).sort((first, second) => Number(first.t) - Number(second.t));
@@ -463,17 +449,6 @@
         speechSynthesis.cancel();
         speechSynthesis.speak(utterance);
       }
-      function applyOrders(value) {
-        try {
-          const updated = JSON.parse(value);
-          if (!Array.isArray(updated)) throw new Error("注文データの形式が正しくありません。");
-          orders = updated;
-          renderHistory();
-          updateCallout();
-        } catch (error) {
-          showNotice(`注文情報を更新できませんでした（${error.message}）`, true);
-        }
-      }
       function addToCart(id, delta) {
         const item = MENU.find(entry => entry.id === Number(id));
         if (!item) return;
@@ -485,7 +460,11 @@
         });
         render();
       }
-      function sendOrder() {
+      async function sendOrder() {
+        if (!firebaseReady || orderPending) {
+          showNotice("注文システムに接続中です。少し待ってからもう一度お試しください。", true);
+          return;
+        }
         const lines = [];
         MENU.forEach(item => {
           const entry = cart.get(item.id);
@@ -513,7 +492,7 @@
           return;
         }
         const order = {
-          id: `C-${Date.now()}`,
+          id: Date.now(),
           table,
           t: Date.now(),
           adultCount,
@@ -527,21 +506,26 @@
         };
         const receiptName = receiptNeeded ? document.getElementById("receiptName").value.trim() : "";
         if (receiptName) order.receiptName = receiptName;
-        const previousOrders = orders;
-        orders = [...orders, order];
-        if (!saveOrders()) {
-          orders = previousOrders;
+        orderPending = true;
+        renderCart();
+        showNotice("注文を送信しています…");
+        try {
+          const submitted = await window.firebaseSync.createCustomerOrder(order);
+          orders = [...orders.filter(existing => existing.key !== submitted.key), submitted];
+          cart.clear();
+          receiptNeeded = false;
+          document.getElementById("receiptToggle").checked = false;
+          document.getElementById("receiptName").value = "";
+          document.getElementById("receiptNameField").hidden = true;
+          showNotice(`ご注文を受け付けました。注文番号：${submitted.id}`);
           render();
-          return;
+          document.getElementById("historyTitle").scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (error) {
+          showNotice(`注文を送信できませんでした。通信状態を確認して、もう一度お試しください。(${error.message})`, true);
+        } finally {
+          orderPending = false;
+          renderCart();
         }
-        cart.clear();
-        receiptNeeded = false;
-        document.getElementById("receiptToggle").checked = false;
-        document.getElementById("receiptName").value = "";
-        document.getElementById("receiptNameField").hidden = true;
-        showNotice(`ご注文を受け付けました。注文番号：${order.id}`);
-        render();
-        document.getElementById("historyTitle").scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
       for (let number = 1; number <= 40; number += 1) {
@@ -581,15 +565,34 @@
       document.getElementById("callList").addEventListener("click", event => {
         if (event.target.closest("button[data-speak-call]")) announceCall();
       });
-      window.addEventListener("storage", event => {
-        if (event.key === STORAGE_KEY && event.newValue) applyOrders(event.newValue);
+      window.addEventListener("firebase-sync-ready", () => {
+        window.firebaseSync.startCustomer(updatedOrders => {
+          orders = updatedOrders;
+          renderHistory();
+          updateCallout();
+        }).catch(error => {
+          firebaseReady = false;
+          firebaseError = "注文システムに接続できません";
+          showNotice(`注文システムに接続できません。通信状態を確認してください。(${error.message})`, true);
+          renderCart();
+        }).then(() => {
+          if (!firebaseError) {
+            firebaseReady = true;
+            renderCart();
+          }
+        });
+      }, { once: true });
+      document.getElementById("firebaseSyncScript").addEventListener("error", () => {
+        firebaseError = "通信システムを読み込めません。ページを再読み込みしてください";
+        showNotice(firebaseError, true);
+        renderCart();
       });
-      try {
-        const savedOrders = localStorage.getItem(STORAGE_KEY);
-        if (savedOrders) applyOrders(savedOrders);
-      } catch (error) {
-        showNotice(`注文履歴を読み込めませんでした（${error.message}）`, true);
-      }
+      window.addEventListener("firebase-sync-error", event => {
+        showNotice(event.detail?.message || "注文システムとの通信に失敗しました。", true);
+      });
+      window.addEventListener("online", () => {
+        showNotice("インターネットに再接続しました。注文システムの接続を確認しています。");
+      });
       render();
       setInterval(updateTimers, 1000);
     })();

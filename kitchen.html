@@ -26,23 +26,6 @@
       text-rendering: optimizeLegibility;
     }
 
-    window.addEventListener("storage", event => {
-      if (event.key !== STORAGE_KEY || !event.newValue) return;
-      try {
-        const updatedOrders = JSON.parse(event.newValue);
-        if (!Array.isArray(updatedOrders) || updatedOrders.some(order => !order || !Array.isArray(order.items))) {
-          throw new Error("保存された注文データの形式が正しくありません。");
-        }
-        updatedOrders.forEach(order => order.items.forEach(item => {
-          if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
-        }));
-        orders = updatedOrders;
-        render();
-      } catch (error) {
-        showNotice(`別画面からの注文を更新できませんでした（${error.message}）`, true);
-      }
-    });
-
     * { box-sizing: border-box; }
     body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); }
     button, select { font: inherit; }
@@ -99,6 +82,9 @@
     .heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
     h1 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -.03em; }
     .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    main:not(.authenticated) > :not(#loginGate) { display: none; }
+    #loginGate { max-width: 560px; margin-top: 30px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+    #loginGate[hidden] { display: none; }
     .clock { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
     .overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 23px 0 20px; }
     .stat {
@@ -225,7 +211,9 @@
     <a class="topbar-link" href="index.html">お客様画面</a>
     <a class="topbar-link" href="admin.html">お会計</a>
     <div class="topbar-spacer"></div>
-    <span class="demo-badge" title="注文はこのブラウザー内に保存されます">デモモード</span>
+    <span class="muted" id="authStatus"></span>
+    <button id="staffLogin" type="button">スタッフログイン</button>
+    <button id="logoutButton" type="button" hidden>ログアウト</button>
     <label class="paper-control" for="paperWidth">紙幅
       <select id="paperWidth" aria-label="レシートの紙幅">
         <option value="80">80mm</option>
@@ -234,7 +222,12 @@
     </label>
   </header>
 
-  <main>
+  <main id="app">
+    <section id="loginGate">
+      <b>スタッフログイン</b>
+      <p class="muted" id="loginMessage">厨房の注文を受信するにはスタッフ用Googleアカウントでログインしてください。</p>
+      <button class="primary" id="gateLogin" type="button">Googleでログイン</button>
+    </section>
     <section class="heading" aria-labelledby="pageTitle">
       <div>
         <h1 id="pageTitle">厨房ディスプレイ</h1>
@@ -264,82 +257,25 @@
 
     <p class="notice" id="notice" aria-live="polite"></p>
     <section class="order-grid" id="orders" aria-live="polite" aria-label="注文一覧"></section>
-    <div class="utility">
-      <button id="addOrder" type="button">＋ デモ注文を追加</button>
-      <button id="resetOrders" type="button">サンプル注文に戻す</button>
-    </div>
   </main>
 
   <div id="printArea" aria-hidden="true"></div>
 
+  <script type="module" src="firebase-sync.js"></script>
   <script>
     (() => {
-      const STORAGE_KEY = "ajimaru-kitchen-demo-orders-v1";
       const PAPER_KEY = "ajimaru-kitchen-paper-width";
       const LIMIT_MS = 20 * 60 * 1000;
-      const DEMO_PRICES = {
-        "鶏のから揚げ定食": 980, "生ビール": 580, "焼き魚定食": 1100, "冷ややっこ": 350,
-        "お子さまうどん": 580, "天ぷら盛り合わせ": 780, "親子丼": 880, "味噌汁": 180,
-        "本日のおすすめ定食": 950, "ウーロン茶": 250
-      };
-      const now = Date.now();
-      const samples = [
-        {
-          id: "A-1048", table: "3", t: now - 4 * 60 * 1000, adultCount: 2, childCount: 0,
-          status: "new", allergy: "なし", allergyNote: "", callCustomerAt: 0,
-          items: [{ n: "鶏のから揚げ定食", p: 980, q: 2, cancelledQty: 0 }, { n: "生ビール", p: 580, q: 1, cancelledQty: 0 }]
-        },
-        {
-          id: "A-1047", table: "カウンター 2", t: now - 11 * 60 * 1000, adultCount: 1, childCount: 0,
-          status: "preparing", allergy: "あり", allergyNote: "えび・かに", callCustomerAt: 0,
-          items: [{ n: "焼き魚定食", p: 1100, q: 1, cancelledQty: 0 }, { n: "冷ややっこ", p: 350, q: 1, cancelledQty: 0 }]
-        },
-        {
-          id: "A-1046", table: "5", t: now - 23 * 60 * 1000, adultCount: 2, childCount: 1,
-          status: "served", allergy: "なし", allergyNote: "", callCustomerAt: 0,
-          items: [{ n: "お子さまうどん", p: 580, q: 1, cancelledQty: 0 }, { n: "天ぷら盛り合わせ", p: 780, q: 1, cancelledQty: 0 }]
-        },
-        {
-          id: "A-1045", table: "1", t: now - 2 * 60 * 1000, adultCount: 3, childCount: 0,
-          status: "new", allergy: "あり", allergyNote: "卵", callCustomerAt: 0,
-          items: [{ n: "親子丼", p: 880, q: 1, cancelledQty: 0 }, { n: "味噌汁", p: 180, q: 2, cancelledQty: 0 }]
-        }
-      ];
-
+      const appElement = document.getElementById("app");
       const ordersElement = document.getElementById("orders");
       const noticeElement = document.getElementById("notice");
       const speechButton = document.getElementById("speechToggle");
       let filter = "all";
       let speechEnabled = false;
-      let orders = loadOrders();
-
-      function loadOrders() {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (!saved) return structuredClone(samples);
-          const parsed = JSON.parse(saved);
-          if (!Array.isArray(parsed) || parsed.some(order => !order || !Array.isArray(order.items))) {
-            throw new Error("保存された注文データの形式が正しくありません。");
-          }
-          parsed.forEach(order => order.items.forEach(item => {
-            if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
-          }));
-          return parsed;
-        } catch (error) {
-          showNotice(`注文を読み込めませんでした。サンプル注文を表示します（${error.message}）`, true);
-          return structuredClone(samples);
-        }
-      }
-
-      function saveOrders() {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
-          noticeElement.textContent = "";
-          noticeElement.removeAttribute("role");
-        } catch (error) {
-          showNotice(`注文を保存できませんでした。ブラウザーの保存領域を確認してください（${error.message}）`, true);
-        }
-      }
+      let orders = [];
+      let isStaff = false;
+      let knownOrderKeys = null;
+      let message = "";
 
       function showNotice(message, isError = false) {
         noticeElement.textContent = message;
@@ -366,6 +302,16 @@
       }
 
       function render() {
+        appElement.classList.toggle("authenticated", isStaff);
+        document.getElementById("loginGate").hidden = isStaff;
+        document.getElementById("authStatus").textContent = isStaff ? "スタッフログイン中" : "";
+        document.getElementById("staffLogin").hidden = isStaff;
+        document.getElementById("logoutButton").hidden = !isStaff;
+        if (!isStaff) {
+          ordersElement.replaceChildren();
+          document.getElementById("loginMessage").textContent = message || "厨房の注文を受信するにはスタッフ用Googleアカウントでログインしてください。";
+          return;
+        }
         updateCounts();
         const visibleOrders = orders
           .filter(order => !order.paid)
@@ -442,13 +388,13 @@
         }).format(date);
       }
 
-      function setStatus(key, status) {
-        const order = orders.find(entry => entry.id === key);
-        if (!order) return;
-        order.status = status;
-        saveOrders();
-        render();
-        showNotice(status === "preparing" ? `Table ${order.table} の調理を開始しました。` : `Table ${order.table} を提供済みにしました。`);
+      async function updateOrder(key, patch, successMessage) {
+        try {
+          await window.firebaseSync.updateOrder(key, patch);
+          showNotice(successMessage);
+        } catch (error) {
+          showNotice(`注文を更新できませんでした。通信状態を確認してください。(${error.message})`, true);
+        }
       }
 
       function setPaperWidth(value) {
@@ -490,39 +436,38 @@
         speechSynthesis.speak(utterance);
       }
 
-      ordersElement.addEventListener("click", event => {
+      ordersElement.addEventListener("click", async event => {
         const button = event.target.closest("button[data-action]");
         if (!button) return;
-        const order = orders.find(entry => entry.id === button.dataset.key);
+        const order = orders.find(entry => entry.key === button.dataset.key);
         if (!order) return;
         switch (button.dataset.action) {
           case "preparing":
           case "served":
-            setStatus(order.id, button.dataset.action);
+            await updateOrder(order.key, { status: button.dataset.action }, button.dataset.action === "preparing" ? `Table ${order.table} の調理を開始しました。` : `Table ${order.table} を提供済みにしました。`);
             break;
           case "cancel": {
             const item = order.items[Number(button.dataset.index)];
             if (!item || remaining(item) < 1) return;
-            item.cancelledQty = (Number(item.cancelledQty) || 0) + 1;
-            saveOrders();
-            render();
-            showNotice(`「${item.n}」を1個取り消しました。`);
+            const cancelledQty = (Number(item.cancelledQty) || 0) + 1;
+            await updateOrder(order.key, { [`items/${button.dataset.index}/cancelledQty`]: cancelledQty }, `「${item.n}」を1個取り消しました。`);
             break;
           }
           case "call":
-            order.callCustomerAt = Date.now();
-            saveOrders();
-            render();
-            showNotice(`Table ${order.table} のお客様をカウンターへ呼び出しました。`);
+            await updateOrder(order.key, { callCustomerAt: Date.now() }, `Table ${order.table} のお客様をカウンターへ呼び出しました。`);
             break;
           case "acknowledge":
-            order.callCustomerAt = 0;
-            saveOrders();
-            render();
-            showNotice("カウンター呼び出しを解除しました。");
+            await updateOrder(order.key, { callCustomerAt: 0 }, "カウンター呼び出しを解除しました。");
             break;
           case "print":
+            try {
+              await window.firebaseSync.claimKitchenPrint(order.key);
+            } catch (error) {
+              showNotice(`印刷状態を保存できませんでした。(${error.message})`, true);
+              return;
+            }
             printOrder(order);
+            showNotice(`注文 #${order.id} を印刷しました。`);
             break;
         }
       });
@@ -539,29 +484,56 @@
         speechEnabled = !speechEnabled;
         speechButton.setAttribute("aria-pressed", String(speechEnabled));
         speechButton.textContent = speechEnabled ? "🔊 注文読み上げ：ON" : "🔈 注文読み上げ：OFF";
-        showNotice(speechEnabled ? "新しいデモ注文を追加すると、内容を読み上げます。" : "注文の自動読み上げを停止しました。");
+        showNotice(speechEnabled ? "新しい注文を受信すると、内容を読み上げます。" : "注文の自動読み上げを停止しました。");
       });
       document.getElementById("thanksButton").addEventListener("click", () => speak("ありがとうございました。"));
       document.getElementById("welcomeButton").addEventListener("click", () => speak("いらっしゃいませ。"));
       document.getElementById("paperWidth").addEventListener("change", event => setPaperWidth(event.target.value));
-      document.getElementById("addOrder").addEventListener("click", () => {
-        const number = Date.now().toString().slice(-5);
-        const order = {
-          id: `A-${number}`, table: String(Math.floor(Math.random() * 8) + 1), t: Date.now(),
-          adultCount: 2, childCount: 0, status: "new", allergy: "なし", allergyNote: "", callCustomerAt: 0,
-          items: [{ n: "本日のおすすめ定食", p: 950, q: 1, cancelledQty: 0 }, { n: "ウーロン茶", p: 250, q: 1, cancelledQty: 0 }]
-        };
-        orders.push(order);
-        saveOrders();
-        render();
-        showNotice(`新しいデモ注文 #${order.id} を受信しました。`);
-        if (speechEnabled) speak(`テーブル${order.table}。${order.items.map(item => item.n).join("。")}`);
+      const login = async () => {
+        const buttons = [document.getElementById("staffLogin"), document.getElementById("gateLogin")];
+        buttons.forEach(button => { button.disabled = true; });
+        try {
+          await window.firebaseSync.signInStaff();
+          message = "";
+        } catch (error) {
+          message = error.message;
+        } finally {
+          buttons.forEach(button => { button.disabled = false; });
+          render();
+        }
+      };
+      document.getElementById("staffLogin").addEventListener("click", login);
+      document.getElementById("gateLogin").addEventListener("click", login);
+      document.getElementById("logoutButton").addEventListener("click", async () => {
+        try {
+          await window.firebaseSync.signOut();
+        } catch (error) {
+          showNotice(`ログアウトできませんでした。(${error.message})`, true);
+        }
       });
-      document.getElementById("resetOrders").addEventListener("click", () => {
-        orders = structuredClone(samples);
-        saveOrders();
+      window.addEventListener("firebase-auth-changed", event => {
+        isStaff = event.detail.isStaff;
+        if (!isStaff) {
+          orders = [];
+          knownOrderKeys = null;
+        } else message = "";
         render();
-        showNotice("サンプル注文に戻しました。");
+      });
+      window.addEventListener("firebase-orders", event => {
+        const previousKeys = knownOrderKeys;
+        orders = event.detail.orders;
+        knownOrderKeys = new Set(orders.map(order => order.key));
+        render();
+        if (!speechEnabled || !previousKeys) return;
+        orders.filter(order => !previousKeys.has(order.key) && !order.paid).forEach(order => {
+          speak(`テーブル${order.table}。${order.items.map(item => item.n).join("。")}`);
+        });
+      });
+      window.addEventListener("firebase-sync-error", event => {
+        const text = event.detail?.message || "Firebaseとの通信に失敗しました。";
+        message = text;
+        showNotice(text, true);
+        render();
       });
 
       const paperSelect = document.getElementById("paperWidth");

@@ -78,6 +78,9 @@
     .panel { margin-top: 17px; padding: 17px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
     .section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 11px; margin-bottom: 14px; }
     .section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    main:not(.authenticated) > :not(#loginGate) { display: none; }
+    #loginGate { max-width: 560px; }
+    #loginGate[hidden] { display: none; }
     .kitchen-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
     .kitchen-summary strong { color: var(--amber); }
     .order-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 13px; }
@@ -157,11 +160,17 @@
     <a class="topbar-link" href="index.html">お客様画面</a>
     <a class="topbar-link" href="kitchen.html">厨房ディスプレイ</a>
     <div class="spacer"></div>
+    <span class="topbar-link" id="authStatus"></span>
     <label class="auto-print"><input id="autoPrint" type="checkbox" checked>新規注文を厨房に自動印刷</label>
-    <span class="demo-badge" title="厨房画面と注文データを共有します">デモモード</span>
+    <button id="logoutButton" type="button" hidden>ログアウト</button>
   </header>
 
-  <main>
+  <main id="app">
+    <section class="panel" id="loginGate">
+      <h2>スタッフログイン</h2>
+      <p class="subtitle" id="loginMessage">注文を受信するにはスタッフ用Googleアカウントでログインしてください。</p>
+      <button class="primary" id="staffLogin" type="button">Googleでログイン</button>
+    </section>
     <section class="page-heading">
       <div>
         <h1>お会計・営業集計</h1>
@@ -223,69 +232,28 @@
   </main>
   <div id="printArea" aria-hidden="true"></div>
 
+  <script type="module" src="firebase-sync.js"></script>
   <script>
     (() => {
-      const STORAGE_KEY = "ajimaru-kitchen-demo-orders-v1";
       const AUTO_PRINT_KEY = "ajimaru-kitchen-auto-print";
       const METHODS = { cash: "現金", credit: "クレジット", paypay: "PayPay", paypal: "PayPal" };
-      const DEMO_PRICES = {
-        "鶏のから揚げ定食": 980, "生ビール": 580, "焼き魚定食": 1100, "冷ややっこ": 350,
-        "お子さまうどん": 580, "天ぷら盛り合わせ": 780, "親子丼": 880, "味噌汁": 180,
-        "本日のおすすめ定食": 950, "ウーロン茶": 250
-      };
       const today = new Date();
       const dateKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-      const now = Date.now();
-      const sampleOrders = [
-        {
-          id: "A-1048", table: "3", t: now - 4 * 60 * 1000, adultCount: 2, childCount: 0,
-          status: "new", allergy: "なし", allergyNote: "", callCustomerAt: 0, paid: false, kitchenPrinted: false,
-          items: [{ n: "鶏のから揚げ定食", p: 980, q: 2, cancelledQty: 0 }, { n: "生ビール", p: 580, q: 1, cancelledQty: 0 }]
-        },
-        {
-          id: "A-1047", table: "カウンター 2", t: now - 11 * 60 * 1000, adultCount: 1, childCount: 0,
-          status: "preparing", allergy: "あり", allergyNote: "えび・かに", callCustomerAt: 0, paid: false, kitchenPrinted: false,
-          items: [{ n: "焼き魚定食", p: 1100, q: 1, cancelledQty: 0 }, { n: "冷ややっこ", p: 350, q: 1, cancelledQty: 0 }]
-        },
-        {
-          id: "A-1046", table: "5", t: now - 23 * 60 * 1000, adultCount: 2, childCount: 1,
-          status: "served", allergy: "なし", allergyNote: "", callCustomerAt: 0, paid: false, kitchenPrinted: true,
-          items: [{ n: "お子さまうどん", p: 580, q: 1, cancelledQty: 0 }, { n: "天ぷら盛り合わせ", p: 780, q: 1, cancelledQty: 0 }]
-        },
-        {
-          id: "A-1045", table: "1", t: now - 2 * 60 * 1000, adultCount: 3, childCount: 0,
-          status: "new", allergy: "あり", allergyNote: "卵", callCustomerAt: 0, paid: false, kitchenPrinted: false,
-          items: [{ n: "親子丼", p: 880, q: 1, cancelledQty: 0 }, { n: "味噌汁", p: 180, q: 2, cancelledQty: 0 }]
-        }
-      ];
       const tablesElement = document.getElementById("tables");
       const historyElement = document.getElementById("history");
       const noticeElement = document.getElementById("notice");
       const printArea = document.getElementById("printArea");
-      let orders = loadOrders();
+      const appElement = document.getElementById("app");
+      let orders = [];
+      let isStaff = false;
+      let knownOrderKeys = null;
+      let message = "";
       let reportDate = dateKey(today);
       let autoPrintEnabled = true;
 
-      function loadOrders() {
-        try {
-          const stored = localStorage.getItem(STORAGE_KEY);
-          if (!stored) return structuredClone(sampleOrders);
-          const parsed = JSON.parse(stored);
-          if (!Array.isArray(parsed) || parsed.some(order => !order || !Array.isArray(order.items))) {
-            throw new Error("保存された注文データの形式が正しくありません。");
-          }
-          parsed.forEach(order => order.items.forEach(item => {
-            if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
-          }));
-          return parsed;
-        } catch (error) {
-          showNotice(`注文を読み込めませんでした。サンプル注文を表示します（${error.message}）`, true);
-          return structuredClone(sampleOrders);
-        }
-      }
-
-      function showNotice(message, isError = false) {
-        noticeElement.textContent = message;
+      function showNotice(statusMessage, isError = false) {
+        message = statusMessage;
+        noticeElement.textContent = statusMessage;
         if (isError) noticeElement.setAttribute("role", "alert");
         else noticeElement.removeAttribute("role");
       }
@@ -310,16 +278,6 @@
 
       function hasMissingPrices(order) {
         return order.items.some(item => quantity(item) > 0 && (!Number.isFinite(Number(item.p)) || Number(item.p) < 0));
-      }
-
-      function writeOrders() {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
-          noticeElement.textContent = "";
-          noticeElement.removeAttribute("role");
-        } catch (error) {
-          showNotice(`注文を保存できませんでした。ブラウザーの保存領域を確認してください（${error.message}）`, true);
-        }
       }
 
       function tableKey(value) {
@@ -355,7 +313,7 @@
                   <td>${escapeHtml(item.n)}${item.cancelledQty ? `<br><span class="sale-method">${escapeHtml(item.cancelledQty)}個取消済み</span>` : ""}</td>
                   <td class="qty">×${remaining} / ${escapeHtml(item.q)}</td>
                   <td class="price">${Number.isFinite(Number(item.p)) ? yen(Number(item.p) * remaining) : "価格未設定"}</td>
-                  <td>${remaining > 0 ? `<button class="cancel-button" type="button" data-action="cancel" data-key="${escapeHtml(order.id)}" data-index="${index}" aria-label="${escapeHtml(item.n)}を1個取消">取消</button>` : ""}</td>
+                  <td>${remaining > 0 ? `<button class="cancel-button" type="button" data-action="cancel" data-key="${escapeHtml(order.key)}" data-index="${index}" aria-label="${escapeHtml(item.n)}を1個取消">取消</button>` : ""}</td>
                 </tr>`;
               }).join("")}
             </tbody>`).join("");
@@ -413,12 +371,12 @@
               <td>Table ${escapeHtml(order.table)}</td>
               <td>${order.items.map(item => `${escapeHtml(item.n)} × ${quantity(item)}`).join("<br>")}</td>
               <td><span class="sale-method">${escapeHtml(METHODS[order.payMethod] || order.payMethod || "不明")}</span><br>
-                <select class="method-select" id="method-${escapeHtml(order.id)}" aria-label="支払方法を変更">${Object.entries(METHODS).map(([method, label]) => `<option value="${method}" ${order.payMethod === method ? "selected" : ""}>${label}</option>`).join("")}</select>
-                <button class="small-button" type="button" data-action="change-method" data-key="${escapeHtml(order.id)}">変更</button>
+                <select class="method-select" id="method-${escapeHtml(order.key)}" aria-label="支払方法を変更">${Object.entries(METHODS).map(([method, label]) => `<option value="${method}" ${order.payMethod === method ? "selected" : ""}>${label}</option>`).join("")}</select>
+                <button class="small-button" type="button" data-action="change-method" data-key="${escapeHtml(order.key)}">変更</button>
               </td>
               <td class="numeric">${yen(orderTotal(order))}</td>
               <td>${escapeHtml(order.receiptName || "—")}</td>
-              <td><button class="small-button" type="button" data-action="paid-receipt" data-key="${escapeHtml(order.id)}">レシート印刷</button></td>
+              <td><button class="small-button" type="button" data-action="paid-receipt" data-key="${escapeHtml(order.key)}">レシート印刷</button></td>
             </tr>`).join("")}</tbody>
         </table>`;
       }
@@ -430,38 +388,19 @@
       }
 
       function render() {
+        appElement.classList.toggle("authenticated", isStaff);
+        document.getElementById("loginGate").hidden = isStaff;
+        document.getElementById("authStatus").textContent = isStaff ? "スタッフログイン中" : "";
+        document.getElementById("logoutButton").hidden = !isStaff;
+        document.getElementById("autoPrint").disabled = !isStaff;
+        if (!isStaff) {
+          document.getElementById("loginMessage").textContent = message || "注文を受信するにはスタッフ用Googleアカウントでログインしてください。";
+          return;
+        }
         renderKitchenQueue();
         renderOpenTables();
         renderSummary();
         renderHistory();
-      }
-
-      function refreshFromOtherPage(value) {
-        try {
-          const updated = JSON.parse(value);
-          if (!Array.isArray(updated) || updated.some(order => !order || !Array.isArray(order.items))) {
-            throw new Error("保存された注文データの形式が正しくありません。");
-          }
-          updated.forEach(order => order.items.forEach(item => {
-            if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
-          }));
-          const knownIds = new Set(orders.map(order => order.id));
-          const arrivingOrders = updated.filter(order => !knownIds.has(order.id) && order.status === "new" && !order.kitchenPrinted && !order.paid);
-          orders = updated;
-          if (autoPrintEnabled && arrivingOrders.length) {
-            const printJobs = arrivingOrders.map(order => {
-              const items = order.items.filter(item => quantity(item) > 0);
-              const time = new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-              order.kitchenPrinted = true;
-              return items.map((item, index) => `<section class="slip"><h2>厨房　Table ${escapeHtml(order.table)}</h2><div>注文 #${escapeHtml(order.id)} ・ ${time} ・ ${items.length}品中 ${index + 1}</div><hr><div class="large">${escapeHtml(item.n)} × ${quantity(item)}</div><hr><div>大人${escapeHtml(order.adultCount ?? 0)} 子${escapeHtml(order.childCount ?? 0)}${order.allergy === "あり" ? " ／ アレルギーあり" : ""}</div></section>`).join("");
-            }).join("");
-            writeOrders();
-            print(printJobs);
-          }
-          render();
-        } catch (error) {
-          showNotice(`厨房画面からの注文を更新できませんでした（${error.message}）`, true);
-        }
       }
 
       function tableOrders(table) {
@@ -471,6 +410,16 @@
       function print(html) {
         printArea.innerHTML = html;
         window.print();
+      }
+
+      async function updateOrderPatches(patches) {
+        try {
+          await window.firebaseSync.updateOrders(patches);
+          return true;
+        } catch (error) {
+          showNotice(`変更を保存できませんでした。通信状態を確認してください。(${error.message})`, true);
+          return false;
+        }
       }
 
       function receiptHtml(table, list, title = "レシート") {
@@ -490,13 +439,20 @@
         const name = window.prompt("領収書の宛名", suggestedName);
         if (name === null) return;
         const total = list.reduce((sum, order) => sum + orderTotal(order), 0);
-        list.forEach(order => { order.receiptName = name.trim(); });
-        writeOrders();
-        render();
-        print(`<section class="slip"><h2>領 収 書</h2><div class="large">${escapeHtml(name.trim() || "　　　　　")} 様</div><p>金額</p><div class="large">${yen(total)}</div><p>但し　お飲食代として</p><div>${escapeHtml(new Date().toLocaleDateString("ja-JP"))}</div><hr><div>あじまるや</div></section>`);
+        updateOrderPatches(list.map(order => ({ key: order.key, patch: { receiptName: name.trim() } }))).then(saved => {
+          if (saved) print(`<section class="slip"><h2>領 収 書</h2><div class="large">${escapeHtml(name.trim() || "　　　　　")} 様</div><p>金額</p><div class="large">${yen(total)}</div><p>但し　お飲食代として</p><div>${escapeHtml(new Date().toLocaleDateString("ja-JP"))}</div><hr><div>あじまるや</div></section>`);
+        });
       }
 
-      function printKitchenOrder(order) {
+      async function printKitchenOrder(order, claim = false) {
+        if (claim) {
+          try {
+            if (!await window.firebaseSync.claimKitchenPrint(order.key)) return;
+          } catch (error) {
+            showNotice(`注文 #${order.id} の印刷状態を保存できませんでした。(${error.message})`, true);
+            return;
+          }
+        }
         const items = order.items.filter(item => quantity(item) > 0);
         const time = new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
         print(items.map((item, index) => `<section class="slip">
@@ -505,31 +461,29 @@
           <div class="large">${escapeHtml(item.n)} × ${quantity(item)}</div><hr>
           <div>大人${escapeHtml(order.adultCount ?? 0)} 子${escapeHtml(order.childCount ?? 0)}${order.allergy === "あり" ? " ／ アレルギーあり" : ""}</div>
         </section>`).join(""));
-        order.kitchenPrinted = true;
-        writeOrders();
-        render();
-        showNotice(`注文 #${order.id} を印刷済みにしました。`);
+        showNotice(`注文 #${order.id} を印刷しました。`);
       }
 
-      tablesElement.addEventListener("click", event => {
+      tablesElement.addEventListener("click", async event => {
         const button = event.target.closest("button[data-action]");
         if (!button) return;
         const action = button.dataset.action;
         const table = button.dataset.table;
         const list = tableOrders(table);
         if (action === "cancel") {
-          const order = orders.find(entry => entry.id === button.dataset.key);
+          const order = orders.find(entry => entry.key === button.dataset.key);
           const item = order?.items[Number(button.dataset.index)];
           if (!item || quantity(item) < 1 || !window.confirm(`「${item.n}」を1個取り消しますか？`)) return;
-          item.cancelledQty = (Number(item.cancelledQty) || 0) + 1;
-          writeOrders();
-          render();
-          showNotice(`「${item.n}」を1個取り消しました。`);
+          const cancelledQty = (Number(item.cancelledQty) || 0) + 1;
+          if (await updateOrderPatches([{ key: order.key, patch: { [`items/${button.dataset.index}/cancelledQty`]: cancelledQty } }])) {
+            showNotice(`「${item.n}」を1個取り消しました。`);
+          }
         } else if (action === "call") {
           if (!list.length) return;
-          list.forEach(order => { order.callCustomerAt = Date.now(); });
-          writeOrders();
-          showNotice(`Table ${table} のお客様をカウンターへ呼び出しました。`);
+          const callCustomerAt = Date.now();
+          if (await updateOrderPatches(list.map(order => ({ key: order.key, patch: { callCustomerAt } })))) {
+            showNotice(`Table ${table} のお客様をカウンターへ呼び出しました。`);
+          }
         } else if (action === "receipt") {
           if (list.length) print(receiptHtml(table, list));
         } else if (action === "invoice") {
@@ -540,51 +494,35 @@
           const method = button.dataset.method;
           if (!window.confirm(`Table ${table}　${yen(total)} を「${METHODS[method]}」で会計しますか？`)) return;
           const paidAt = Date.now();
-          list.forEach(order => {
-            order.paid = true;
-            order.payMethod = method;
-            order.paidAt = paidAt;
-            order.status = "served";
-          });
-          writeOrders();
-          render();
-          showNotice(`Table ${table} の会計（${yen(total)}・${METHODS[method]}）を記録しました。`);
+          if (await updateOrderPatches(list.map(order => ({ key: order.key, patch: { paid: true, payMethod: method, paidAt, status: "served" } })))) {
+            showNotice(`Table ${table} の会計（${yen(total)}・${METHODS[method]}）を記録しました。`);
+          }
         }
       });
 
       historyElement.addEventListener("click", event => {
         const button = event.target.closest("button[data-action]");
         if (!button) return;
-        const order = orders.find(entry => entry.id === button.dataset.key && entry.paid);
+        const order = orders.find(entry => entry.key === button.dataset.key && entry.paid);
         if (!order) return;
         if (button.dataset.action === "change-method") {
-          const selection = document.getElementById(`method-${order.id}`);
+          const selection = document.getElementById(`method-${order.key}`);
           if (!selection || !METHODS[selection.value]) return;
-          order.payMethod = selection.value;
-          writeOrders();
-          render();
-          showNotice(`注文 #${order.id} の支払方法を${METHODS[selection.value]}に変更しました。`);
+          updateOrderPatches([{ key: order.key, patch: { payMethod: selection.value } }]).then(saved => {
+            if (saved) showNotice(`注文 #${order.id} の支払方法を${METHODS[selection.value]}に変更しました。`);
+          });
         } else if (button.dataset.action === "paid-receipt") {
           print(receiptHtml(order.table, [order], `会計済み ${METHODS[order.payMethod] || ""}`));
         }
       });
 
-      document.getElementById("printPending").addEventListener("click", () => {
+      document.getElementById("printPending").addEventListener("click", async () => {
         const pending = orders.filter(order => order.status === "new" && !order.kitchenPrinted && !order.paid);
         if (!pending.length) {
           showNotice("印刷待ちの新規注文はありません。");
           return;
         }
-        const html = pending.flatMap(order => {
-          const items = order.items.filter(item => quantity(item) > 0);
-          const time = new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-          order.kitchenPrinted = true;
-          return items.map((item, index) => `<section class="slip"><h2>厨房　Table ${escapeHtml(order.table)}</h2><div>注文 #${escapeHtml(order.id)} ・ ${time} ・ ${items.length}品中 ${index + 1}</div><hr><div class="large">${escapeHtml(item.n)} × ${quantity(item)}</div><hr><div>大人${escapeHtml(order.adultCount ?? 0)} 子${escapeHtml(order.childCount ?? 0)}${order.allergy === "あり" ? " ／ アレルギーあり" : ""}</div></section>`);
-        }).join("");
-        writeOrders();
-        render();
-        print(html);
-        showNotice(`${pending.length}件の注文を印刷済みにしました。`);
+        for (const order of pending) await printKitchenOrder(order, true);
       });
 
       document.getElementById("printSummary").addEventListener("click", () => {
@@ -618,8 +556,52 @@
           showNotice(`印刷設定を保存できませんでした（${error.message}）`, true);
         }
       });
+      document.getElementById("staffLogin").addEventListener("click", async () => {
+        document.getElementById("staffLogin").disabled = true;
+        try {
+          await window.firebaseSync.signInStaff();
+          message = "";
+        } catch (error) {
+          message = error.message;
+        } finally {
+          document.getElementById("staffLogin").disabled = false;
+          render();
+        }
+      });
+      document.getElementById("logoutButton").addEventListener("click", async () => {
+        try {
+          await window.firebaseSync.signOut();
+        } catch (error) {
+          showNotice(`ログアウトできませんでした。(${error.message})`, true);
+        }
+      });
+      window.addEventListener("firebase-auth-changed", event => {
+        isStaff = event.detail.isStaff;
+        if (!isStaff) {
+          orders = [];
+          knownOrderKeys = null;
+        } else {
+          message = "";
+        }
+        render();
+      });
+      window.addEventListener("firebase-orders", event => {
+        const previousKeys = knownOrderKeys;
+        orders = event.detail.orders;
+        knownOrderKeys = new Set(orders.map(order => order.key));
+        render();
+        if (!autoPrintEnabled || event.detail.initial || !previousKeys) return;
+        orders
+          .filter(order => !previousKeys.has(order.key) && order.status === "new" && !order.kitchenPrinted && !order.paid)
+          .forEach(order => printKitchenOrder(order, true));
+      });
+      window.addEventListener("firebase-sync-error", event => {
+        const text = event.detail?.message || "Firebaseとの通信に失敗しました。";
+        message = text;
+        showNotice(text, true);
+        render();
+      });
       window.addEventListener("storage", event => {
-        if (event.key === STORAGE_KEY && event.newValue) refreshFromOtherPage(event.newValue);
         if (event.key === AUTO_PRINT_KEY) {
           autoPrint.checked = event.newValue !== "false";
           autoPrintEnabled = autoPrint.checked;
