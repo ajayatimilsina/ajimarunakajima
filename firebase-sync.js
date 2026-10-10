@@ -62,18 +62,64 @@ function publishCustomerOrders() {
 
 function watchCustomerOrder(key, uid) {
   if (customerOrderStops.has(key)) return;
-  const stop = onValue(ref(database, `orders/${key}`), snapshot => {
+  let stop;
+  let stopAfterSubscribe = false;
+  const stopListener = () => {
+    if (stop) stop();
+    else stopAfterSubscribe = true;
+  };
+  stop = onValue(ref(database, `orders/${key}`), snapshot => {
     const order = snapshot.val();
     if (order && order.customerUid === uid) customerOrders.set(key, normalizeOrder(order, key));
     else customerOrders.delete(key);
     publishCustomerOrders();
-  }, error => emit("firebase-sync-error", { message: `注文状況を受信できませんでした: ${error.message}` }));
+  }, error => {
+    if (/PERMISSION_DENIED|permission_denied/i.test(error.message)) {
+      stopListener();
+      customerOrderStops.delete(key);
+      customerOrders.delete(key);
+      try {
+        const keys = readCustomerKeys().filter(savedKey => savedKey !== key);
+        localStorage.setItem(CUSTOMER_ORDER_KEYS, JSON.stringify(keys));
+      } catch (storageError) {
+        emit("firebase-sync-error", { message: `閲覧できない注文履歴を整理できませんでした: ${storageError.message}` });
+      }
+      publishCustomerOrders();
+      emit("firebase-sync-notice", { message: "以前のログインで作成された注文履歴は、この端末では表示できないため整理しました。" });
+      return;
+    }
+    emit("firebase-sync-error", { message: `注文状況を受信できませんでした: ${error.message}` });
+  });
+  if (stopAfterSubscribe) {
+    stop();
+    return;
+  }
   customerOrderStops.set(key, stop);
 }
 
 async function ensureCustomer() {
   if (!auth.currentUser) await signInAnonymously(auth);
   return auth.currentUser;
+}
+
+function readServerTimeOffset() {
+  return new Promise((resolve, reject) => {
+    let stop = () => {};
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      callback(value);
+      stop();
+    };
+    const unsubscribe = onValue(ref(database, ".info/serverTimeOffset"), snapshot => {
+      const offset = Number(snapshot.val());
+      if (Number.isFinite(offset)) finish(resolve, offset);
+      else finish(reject, new Error("Firebaseサーバー時刻を取得できませんでした。"));
+    }, error => finish(reject, error));
+    stop = unsubscribe;
+    if (settled) stop();
+  });
 }
 
 async function startCustomer(listener) {
@@ -91,8 +137,9 @@ async function startCustomer(listener) {
 
 async function createCustomerOrder(order) {
   const user = await ensureCustomer();
+  const serverNow = Date.now() + await readServerTimeOffset();
   const orderRef = push(ref(database, "orders"));
-  const record = { ...order, customerUid: user.uid };
+  const record = { ...order, t: serverNow - 1000, customerUid: user.uid };
   try {
     await set(orderRef, record);
   } catch (error) {

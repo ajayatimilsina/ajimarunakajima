@@ -594,6 +594,9 @@
       window.addEventListener("firebase-sync-error", event => {
         showNotice(event.detail?.message || "注文システムとの通信に失敗しました。", true);
       });
+      window.addEventListener("firebase-sync-notice", event => {
+        showNotice(event.detail?.message || "注文履歴を更新しました。");
+      });
       window.addEventListener("online", () => {
         showNotice("インターネットに再接続しました。注文システムの接続を確認しています。");
       });
