@@ -499,6 +499,8 @@
           childCount,
           guestType,
           allergy,
+          allergyNote: "",
+          callCustomerAt: 0,
           status: "new",
           paid: false,
           kitchenPrinted: false,
@@ -521,7 +523,12 @@
           render();
           document.getElementById("historyTitle").scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (error) {
-          showNotice(`注文を送信できませんでした。通信状態を確認して、もう一度お試しください。(${error.message})`, true);
+          const detail = error?.message || String(error);
+          if (/PERMISSION_DENIED/i.test(detail)) {
+            showNotice("注文を送信できませんでした。Firebaseルールまたは匿名ログイン設定を確認してください。（PERMISSION_DENIED）", true);
+          } else {
+            showNotice(`注文を送信できませんでした。通信状態を確認して、もう一度お試しください。(${detail})`, true);
+          }
         } finally {
           orderPending = false;
           renderCart();

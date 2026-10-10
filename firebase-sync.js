@@ -93,7 +93,14 @@ async function createCustomerOrder(order) {
   const user = await ensureCustomer();
   const orderRef = push(ref(database, "orders"));
   const record = { ...order, customerUid: user.uid };
-  await set(orderRef, record);
+  try {
+    await set(orderRef, record);
+  } catch (error) {
+    if (String(error?.message || "").includes("PERMISSION_DENIED")) {
+      throw new Error("PERMISSION_DENIED: Firebase Realtime Database rules rejected this order write.");
+    }
+    throw error;
+  }
   saveCustomerKey(orderRef.key);
   watchCustomerOrder(orderRef.key, user.uid);
   return normalizeOrder(record, orderRef.key);
