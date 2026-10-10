@@ -20,13 +20,20 @@ const customerOrders = new Map();
 const customerListeners = new Set();
 const customerOrderStops = new Map();
 let staffOrdersStop = null;
+let staffOrdersInitialized = false;
+let staffOrdersStarting = false;
 
 function emit(name, detail) {
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
 function isStaff(user) {
-  return Boolean(user && !user.isAnonymous && user.email?.toLowerCase() === STAFF_EMAIL);
+  return Boolean(
+    user &&
+    !user.isAnonymous &&
+    user.email?.toLowerCase() === STAFF_EMAIL &&
+    user.providerData.some(provider => provider.providerId === "google.com")
+  );
 }
 
 function normalizeOrder(order, key) {
@@ -158,16 +165,35 @@ function stopStaffOrders() {
     staffOrdersStop();
     staffOrdersStop = null;
   }
+  staffOrdersInitialized = false;
+  staffOrdersStarting = false;
 }
 
-function listenForStaffOrders(user) {
-  if (!isStaff(user) || staffOrdersStop) return;
+async function listenForStaffOrders(user) {
+  if (!isStaff(user) || staffOrdersStop || staffOrdersStarting) return;
+  staffOrdersStarting = true;
+  try {
+    const token = await user.getIdTokenResult(true);
+    if (auth.currentUser?.uid !== user.uid || !isStaff(user)) return;
+    if (token.signInProvider !== "google.com") {
+      throw new Error("スタッフ用Googleアカウントでログインし直してください。");
+    }
+  } catch (error) {
+    emit("firebase-sync-error", { message: `スタッフの認証を確認できませんでした: ${error.message}` });
+    return;
+  } finally {
+    staffOrdersStarting = false;
+  }
   staffOrdersStop = onValue(ref(database, "orders"), snapshot => {
     const orders = [];
     snapshot.forEach(child => orders.push(normalizeOrder(child.val(), child.key)));
     orders.sort((first, second) => Number(first.t) - Number(second.t));
-    emit("firebase-orders", { orders });
-  }, error => emit("firebase-sync-error", { message: `注文一覧を受信できませんでした: ${error.message}` }));
+    emit("firebase-orders", { orders, initial: !staffOrdersInitialized });
+    staffOrdersInitialized = true;
+  }, error => {
+    stopStaffOrders();
+    emit("firebase-sync-error", { message: `注文一覧を受信できませんでした。GoogleログインとDatabase Rulesを確認してください。(${error.message})` });
+  });
 }
 
 onAuthStateChanged(auth, user => {
@@ -181,6 +207,11 @@ async function signInStaff() {
   if (!isStaff(result.user)) {
     await signOut(auth);
     throw new Error(`スタッフ用アカウント（${STAFF_EMAIL}）でログインしてください。`);
+  }
+  const token = await result.user.getIdTokenResult(true);
+  if (token.signInProvider !== "google.com") {
+    await signOut(auth);
+    throw new Error("Firebase Rulesで許可されたGoogle認証を確認できませんでした。スタッフ用Googleアカウントでログインしてください。");
   }
   return result.user;
 }
