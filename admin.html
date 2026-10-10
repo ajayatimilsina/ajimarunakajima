@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111820">
+  <title>あじまるや | お会計</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111820;
+      --panel: #19232d;
+      --raised: #202c37;
+      --border: #2b3946;
+      --text: #f2f5f7;
+      --muted: #98a7b5;
+      --blue: #71c7e8;
+      --blue-dark: #123341;
+      --amber: #f4bd58;
+      --green: #73d2a0;
+      --green-dark: #183b2b;
+      --red: #ff9d94;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); }
+    button, input, select { font: inherit; }
+    button, input, select {
+      min-height: 40px;
+      padding: 8px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--raised);
+      color: var(--text);
+    }
+    button { cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+    button:hover { border-color: #526779; background: #293947; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .primary { border-color: var(--blue); background: var(--blue); color: #10232c; font-weight: 750; }
+    .primary:hover { border-color: #9cdef4; background: #9cdef4; }
+    .quiet { background: transparent; }
+    .topbar {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 10px clamp(16px, 3vw, 36px);
+      border-bottom: 1px solid var(--border);
+      background: #151e27;
+    }
+    .brand { font-weight: 800; white-space: nowrap; }
+    .brand span { color: var(--blue); }
+    .topbar-link { color: var(--blue); font-size: 13px; }
+    .spacer { flex: 1; }
+    .demo-badge {
+      padding: 6px 10px;
+      border: 1px solid #68502a;
+      border-radius: 999px;
+      background: #302719;
+      color: #f3ce83;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .auto-print { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+    .auto-print input { width: 17px; min-height: 17px; accent-color: var(--blue); }
+    main { max-width: 1500px; margin: 0 auto; padding: 25px clamp(16px, 3vw, 36px) 45px; }
+    .page-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; }
+    h1 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -.03em; }
+    h2 { margin: 0; font-size: 18px; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    .clock { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .notice { min-height: 22px; margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+    .notice[role="alert"] { color: var(--red); }
+    .panel { margin-top: 17px; padding: 17px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
+    .section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 11px; margin-bottom: 14px; }
+    .section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .kitchen-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .kitchen-summary strong { color: var(--amber); }
+    .order-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 13px; }
+    .table-card { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: #151f28; }
+    .table-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 15px 12px; border-bottom: 1px solid var(--border); }
+    .table-name { font-size: 21px; font-weight: 850; }
+    .table-total { color: var(--green); font-size: 22px; font-weight: 850; font-variant-numeric: tabular-nums; }
+    .order-subtitle { padding: 9px 15px 0; color: var(--muted); font-size: 12px; }
+    .items { width: 100%; border-collapse: collapse; }
+    .items td { padding: 9px 8px; border-bottom: 1px solid #26333e; font-size: 13px; }
+    .items tr:last-child td { border-bottom: 0; }
+    .items td:first-child { padding-left: 15px; }
+    .items td:last-child { padding-right: 15px; }
+    .items .qty { color: var(--muted); text-align: center; white-space: nowrap; }
+    .items .price { text-align: right; white-space: nowrap; }
+    .items .cancelled td { color: #81909c; text-decoration: line-through; }
+    .cancel-button { min-height: 29px; padding: 4px 7px; color: var(--muted); font-size: 11px; }
+    .receipt-name { margin: 0; padding: 0 15px 11px; color: var(--muted); font-size: 12px; }
+    .table-actions { display: grid; gap: 9px; padding: 12px 15px 15px; border-top: 1px solid var(--border); }
+    .button-row { display: flex; flex-wrap: wrap; gap: 7px; }
+    .button-row button { flex: 1 1 auto; min-height: 37px; padding: 7px 9px; font-size: 12px; }
+    .button-row.payments button { min-width: 90px; }
+    .empty {
+      display: grid;
+      min-height: 130px;
+      grid-column: 1 / -1;
+      place-content: center;
+      justify-items: center;
+      gap: 7px;
+      border: 1px dashed #3a4b59;
+      border-radius: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .empty strong { color: var(--text); }
+    .kitchen-empty { margin-top: 13px; color: var(--muted); font-size: 13px; }
+    .summary-total { color: var(--green); font-size: 21px; font-weight: 850; }
+    .date-picker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .table-scroll { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th, .data-table td { padding: 10px 9px; border-top: 1px solid var(--border); text-align: left; vertical-align: top; font-size: 13px; }
+    .data-table th { color: var(--muted); font-size: 11px; font-weight: 650; white-space: nowrap; }
+    .data-table .numeric { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .method-select { min-height: 32px; padding: 4px 6px; font-size: 12px; }
+    .small-button { min-height: 32px; padding: 5px 8px; font-size: 11px; }
+    .sale-method { color: var(--muted); }
+    .summary-table { max-width: 650px; }
+    .summary-table .grand-total td { color: var(--green); font-size: 15px; font-weight: 800; }
+    #printArea { display: none; }
+    @media (max-width: 680px) {
+      .topbar { gap: 11px; padding-inline: 14px; }
+      .topbar-link { font-size: 12px; }
+      .demo-badge { padding: 6px 8px; font-size: 11px; }
+      .auto-print { max-width: 115px; font-size: 10px; }
+      main { padding-top: 20px; }
+      .panel { padding: 13px; }
+      .data-table th, .data-table td { padding: 8px 7px; }
+    }
+    @media print {
+      body { background: #fff; color: #000; }
+      body > *:not(#printArea) { display: none !important; }
+      #printArea { display: block; width: var(--paper-width, 80mm); padding: 2mm; color: #000; font: 13px/1.4 "MS Gothic", monospace; }
+      .slip { width: var(--paper-width, 80mm); padding: 2mm; page-break-after: always; break-after: page; }
+      .slip:last-child { page-break-after: auto; break-after: auto; }
+      .slip h2 { margin: 0 0 3mm; font-size: 18px; }
+      .slip .large { font-size: 22px; font-weight: 800; }
+      .slip table { width: 100%; border-collapse: collapse; }
+      .slip td { padding: 1mm 0; }
+      .slip hr { border: 0; border-top: 1px dashed #000; }
+      @page { size: var(--paper-width, 80mm) auto; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span>あじまるや</span>　お会計</div>
+    <a class="topbar-link" href="index.html">お客様画面</a>
+    <a class="topbar-link" href="kitchen.html">厨房ディスプレイ</a>
+    <div class="spacer"></div>
+    <label class="auto-print"><input id="autoPrint" type="checkbox" checked>新規注文を厨房に自動印刷</label>
+    <span class="demo-badge" title="厨房画面と注文データを共有します">デモモード</span>
+  </header>
+
+  <main>
+    <section class="page-heading">
+      <div>
+        <h1>お会計・営業集計</h1>
+        <p class="subtitle">テーブルごとの会計、支払方法別の集計、レシート発行ができます。</p>
+      </div>
+      <time class="clock" id="clock"></time>
+    </section>
+    <p class="notice" id="notice" aria-live="polite"></p>
+
+    <section class="panel" aria-labelledby="kitchenHeading">
+      <div class="section-heading">
+        <div>
+          <h2 id="kitchenHeading">厨房印刷</h2>
+          <p>未印刷の新規注文を1品ずつレシートに印刷します。</p>
+        </div>
+        <div class="kitchen-summary"><strong id="pendingCount">0件</strong><button id="printPending" type="button">未印刷を今すぐ印刷</button></div>
+      </div>
+      <div id="kitchenEmpty" class="kitchen-empty">未印刷の新規注文はありません。</div>
+    </section>
+
+    <section class="panel" aria-labelledby="checkoutHeading">
+      <div class="section-heading">
+        <div>
+          <h2 id="checkoutHeading">未会計テーブル</h2>
+          <p>会計するテーブルと支払方法を選んでください。</p>
+        </div>
+        <strong class="summary-total" id="openTotal">¥0</strong>
+      </div>
+      <div class="order-grid" id="tables" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="summaryHeading">
+      <div class="section-heading">
+        <div>
+          <h2 id="summaryHeading">支払方法別の集計</h2>
+          <p>選択した日付の会計済み売上を表示します。</p>
+        </div>
+        <label class="date-picker" for="reportDate">営業日 <input id="reportDate" type="date"></label>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table summary-table">
+          <thead><tr><th>支払方法</th><th class="numeric">件数</th><th class="numeric">金額</th></tr></thead>
+          <tbody id="summaryRows"></tbody>
+          <tfoot id="summaryTotal"></tfoot>
+        </table>
+      </div>
+      <div style="margin-top:13px"><button class="small-button" id="printSummary" type="button">集計結果を印刷</button></div>
+    </section>
+
+    <section class="panel" aria-labelledby="historyHeading">
+      <div class="section-heading">
+        <div>
+          <h2 id="historyHeading">お会計履歴</h2>
+          <p id="historyDate"></p>
+        </div>
+      </div>
+      <div class="table-scroll" id="history"></div>
+    </section>
+  </main>
+  <div id="printArea" aria-hidden="true"></div>
+
+  <script>
+    (() => {
+      const STORAGE_KEY = "ajimaru-kitchen-demo-orders-v1";
+      const AUTO_PRINT_KEY = "ajimaru-kitchen-auto-print";
+      const METHODS = { cash: "現金", credit: "クレジット", paypay: "PayPay", paypal: "PayPal" };
+      const DEMO_PRICES = {
+        "鶏のから揚げ定食": 980, "生ビール": 580, "焼き魚定食": 1100, "冷ややっこ": 350,
+        "お子さまうどん": 580, "天ぷら盛り合わせ": 780, "親子丼": 880, "味噌汁": 180,
+        "本日のおすすめ定食": 950, "ウーロン茶": 250
+      };
+      const today = new Date();
+      const dateKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      const now = Date.now();
+      const sampleOrders = [
+        {
+          id: "A-1048", table: "3", t: now - 4 * 60 * 1000, adultCount: 2, childCount: 0,
+          status: "new", allergy: "なし", allergyNote: "", callCustomerAt: 0, paid: false, kitchenPrinted: false,
+          items: [{ n: "鶏のから揚げ定食", p: 980, q: 2, cancelledQty: 0 }, { n: "生ビール", p: 580, q: 1, cancelledQty: 0 }]
+        },
+        {
+          id: "A-1047", table: "カウンター 2", t: now - 11 * 60 * 1000, adultCount: 1, childCount: 0,
+          status: "preparing", allergy: "あり", allergyNote: "えび・かに", callCustomerAt: 0, paid: false, kitchenPrinted: false,
+          items: [{ n: "焼き魚定食", p: 1100, q: 1, cancelledQty: 0 }, { n: "冷ややっこ", p: 350, q: 1, cancelledQty: 0 }]
+        },
+        {
+          id: "A-1046", table: "5", t: now - 23 * 60 * 1000, adultCount: 2, childCount: 1,
+          status: "served", allergy: "なし", allergyNote: "", callCustomerAt: 0, paid: false, kitchenPrinted: true,
+          items: [{ n: "お子さまうどん", p: 580, q: 1, cancelledQty: 0 }, { n: "天ぷら盛り合わせ", p: 780, q: 1, cancelledQty: 0 }]
+        },
+        {
+          id: "A-1045", table: "1", t: now - 2 * 60 * 1000, adultCount: 3, childCount: 0,
+          status: "new", allergy: "あり", allergyNote: "卵", callCustomerAt: 0, paid: false, kitchenPrinted: false,
+          items: [{ n: "親子丼", p: 880, q: 1, cancelledQty: 0 }, { n: "味噌汁", p: 180, q: 2, cancelledQty: 0 }]
+        }
+      ];
+      const tablesElement = document.getElementById("tables");
+      const historyElement = document.getElementById("history");
+      const noticeElement = document.getElementById("notice");
+      const printArea = document.getElementById("printArea");
+      let orders = loadOrders();
+      let reportDate = dateKey(today);
+      let autoPrintEnabled = true;
+
+      function loadOrders() {
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (!stored) return structuredClone(sampleOrders);
+          const parsed = JSON.parse(stored);
+          if (!Array.isArray(parsed) || parsed.some(order => !order || !Array.isArray(order.items))) {
+            throw new Error("保存された注文データの形式が正しくありません。");
+          }
+          parsed.forEach(order => order.items.forEach(item => {
+            if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
+          }));
+          return parsed;
+        } catch (error) {
+          showNotice(`注文を読み込めませんでした。サンプル注文を表示します（${error.message}）`, true);
+          return structuredClone(sampleOrders);
+        }
+      }
+
+      function showNotice(message, isError = false) {
+        noticeElement.textContent = message;
+        if (isError) noticeElement.setAttribute("role", "alert");
+        else noticeElement.removeAttribute("role");
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, character => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[character]);
+      }
+
+      function yen(value) {
+        return `¥${Math.round(Number(value) || 0).toLocaleString("ja-JP")}`;
+      }
+
+      function quantity(item) {
+        return Math.max(0, Number(item.q) - Math.min(Number(item.q), item.cancelled ? Number(item.q) : Number(item.cancelledQty) || 0));
+      }
+
+      function orderTotal(order) {
+        return order.items.reduce((sum, item) => sum + (Number(item.p) || 0) * quantity(item), 0);
+      }
+
+      function hasMissingPrices(order) {
+        return order.items.some(item => quantity(item) > 0 && (!Number.isFinite(Number(item.p)) || Number(item.p) < 0));
+      }
+
+      function writeOrders() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+          noticeElement.textContent = "";
+          noticeElement.removeAttribute("role");
+        } catch (error) {
+          showNotice(`注文を保存できませんでした。ブラウザーの保存領域を確認してください（${error.message}）`, true);
+        }
+      }
+
+      function tableKey(value) {
+        return String(value);
+      }
+
+      function renderOpenTables() {
+        const open = orders.filter(order => !order.paid);
+        const tableNames = [...new Set(open.map(order => tableKey(order.table)))].sort((first, second) => {
+          const firstNumber = Number(first);
+          const secondNumber = Number(second);
+          if (Number.isFinite(firstNumber) && Number.isFinite(secondNumber)) return firstNumber - secondNumber;
+          return first.localeCompare(second, "ja");
+        });
+        const total = open.reduce((sum, order) => sum + orderTotal(order), 0);
+        document.getElementById("openTotal").textContent = yen(total);
+
+        if (!tableNames.length) {
+          tablesElement.innerHTML = `<div class="empty"><strong>未会計のテーブルはありません</strong><span>新しい注文が入るとここに表示されます。</span></div>`;
+          return;
+        }
+
+        tablesElement.innerHTML = tableNames.map(table => {
+          const tableOrders = open.filter(order => tableKey(order.table) === table);
+          const total = tableOrders.reduce((sum, order) => sum + orderTotal(order), 0);
+          const missingPrices = tableOrders.some(hasMissingPrices);
+          const items = tableOrders.map(order => `
+            <tbody>
+              <tr><td colspan="4" class="order-subtitle">注文 #${escapeHtml(order.id)} ・ ${escapeHtml(new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))}</td></tr>
+              ${order.items.map((item, index) => {
+                const remaining = quantity(item);
+                return `<tr class="${remaining === 0 ? "cancelled" : ""}">
+                  <td>${escapeHtml(item.n)}${item.cancelledQty ? `<br><span class="sale-method">${escapeHtml(item.cancelledQty)}個取消済み</span>` : ""}</td>
+                  <td class="qty">×${remaining} / ${escapeHtml(item.q)}</td>
+                  <td class="price">${Number.isFinite(Number(item.p)) ? yen(Number(item.p) * remaining) : "価格未設定"}</td>
+                  <td>${remaining > 0 ? `<button class="cancel-button" type="button" data-action="cancel" data-key="${escapeHtml(order.id)}" data-index="${index}" aria-label="${escapeHtml(item.n)}を1個取消">取消</button>` : ""}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>`).join("");
+          const names = [...new Set(tableOrders.map(order => order.receiptName).filter(Boolean))];
+
+          return `<article class="table-card" data-table="${escapeHtml(table)}">
+            <div class="table-card-head"><span class="table-name">Table ${escapeHtml(table)}</span><span class="table-total">${yen(total)}</span></div>
+            <table class="items">${items}</table>
+            ${names.length ? `<p class="receipt-name">領収書宛名：${escapeHtml(names.join(" / "))}</p>` : ""}
+            <div class="table-actions">
+              <div class="button-row">
+                <button type="button" data-action="call" data-table="${escapeHtml(table)}">カウンターへ呼び出す</button>
+                <button type="button" data-action="receipt" data-table="${escapeHtml(table)}">レシート</button>
+                <button type="button" data-action="invoice" data-table="${escapeHtml(table)}">領収書</button>
+              </div>
+              <div class="button-row payments">
+                ${Object.entries(METHODS).map(([method, label]) => `<button class="primary" type="button" data-action="pay" data-method="${method}" data-table="${escapeHtml(table)}"${missingPrices ? " disabled title=\"価格が未設定の注文があります\"" : ""}>${label}で会計</button>`).join("")}
+              </div>
+              ${missingPrices ? `<p class="receipt-name">価格未設定の商品があるため、会計できません。</p>` : ""}
+            </div>
+          </article>`;
+        }).join("");
+      }
+
+      function paidOnReportDate() {
+        return orders.filter(order => order.paid && dateKey(new Date(Number(order.paidAt) || Number(order.t))) === reportDate);
+      }
+
+      function renderSummary() {
+        const paid = paidOnReportDate();
+        const sums = Object.fromEntries(Object.keys(METHODS).map(method => [method, { count: 0, amount: 0 }]));
+        paid.forEach(order => {
+          const method = METHODS[order.payMethod] ? order.payMethod : "cash";
+          sums[method].count += 1;
+          sums[method].amount += orderTotal(order);
+        });
+        document.getElementById("summaryRows").innerHTML = Object.entries(METHODS).map(([method, label]) => `
+          <tr><td>${label}</td><td class="numeric">${sums[method].count}件</td><td class="numeric">${yen(sums[method].amount)}</td></tr>`).join("");
+        document.getElementById("summaryTotal").innerHTML = `
+          <tr class="grand-total"><td>合計</td><td class="numeric">${paid.length}件</td><td class="numeric">${yen(paid.reduce((sum, order) => sum + orderTotal(order), 0))}</td></tr>`;
+      }
+
+      function renderHistory() {
+        const paid = paidOnReportDate().sort((first, second) => (Number(second.paidAt) || Number(second.t)) - (Number(first.paidAt) || Number(first.t)));
+        document.getElementById("historyDate").textContent = `${reportDate} の会計履歴：${paid.length}件`;
+        if (!paid.length) {
+          historyElement.innerHTML = `<div class="empty"><strong>この日の会計履歴はありません</strong></div>`;
+          return;
+        }
+        historyElement.innerHTML = `<table class="data-table">
+          <thead><tr><th>会計時刻</th><th>テーブル</th><th>注文内容</th><th>支払方法</th><th class="numeric">合計</th><th>領収書宛名</th><th>操作</th></tr></thead>
+          <tbody>${paid.map(order => `
+            <tr>
+              <td>${escapeHtml(new Date(Number(order.paidAt) || Number(order.t)).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))}</td>
+              <td>Table ${escapeHtml(order.table)}</td>
+              <td>${order.items.map(item => `${escapeHtml(item.n)} × ${quantity(item)}`).join("<br>")}</td>
+              <td><span class="sale-method">${escapeHtml(METHODS[order.payMethod] || order.payMethod || "不明")}</span><br>
+                <select class="method-select" id="method-${escapeHtml(order.id)}" aria-label="支払方法を変更">${Object.entries(METHODS).map(([method, label]) => `<option value="${method}" ${order.payMethod === method ? "selected" : ""}>${label}</option>`).join("")}</select>
+                <button class="small-button" type="button" data-action="change-method" data-key="${escapeHtml(order.id)}">変更</button>
+              </td>
+              <td class="numeric">${yen(orderTotal(order))}</td>
+              <td>${escapeHtml(order.receiptName || "—")}</td>
+              <td><button class="small-button" type="button" data-action="paid-receipt" data-key="${escapeHtml(order.id)}">レシート印刷</button></td>
+            </tr>`).join("")}</tbody>
+        </table>`;
+      }
+
+      function renderKitchenQueue() {
+        const pending = orders.filter(order => order.status === "new" && !order.kitchenPrinted && !order.paid);
+        document.getElementById("pendingCount").textContent = `${pending.length}件`;
+        document.getElementById("kitchenEmpty").hidden = pending.length > 0;
+      }
+
+      function render() {
+        renderKitchenQueue();
+        renderOpenTables();
+        renderSummary();
+        renderHistory();
+      }
+
+      function refreshFromOtherPage(value) {
+        try {
+          const updated = JSON.parse(value);
+          if (!Array.isArray(updated) || updated.some(order => !order || !Array.isArray(order.items))) {
+            throw new Error("保存された注文データの形式が正しくありません。");
+          }
+          updated.forEach(order => order.items.forEach(item => {
+            if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
+          }));
+          const knownIds = new Set(orders.map(order => order.id));
+          const arrivingOrders = updated.filter(order => !knownIds.has(order.id) && order.status === "new" && !order.kitchenPrinted && !order.paid);
+          orders = updated;
+          if (autoPrintEnabled && arrivingOrders.length) {
+            const printJobs = arrivingOrders.map(order => {
+              const items = order.items.filter(item => quantity(item) > 0);
+              const time = new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+              order.kitchenPrinted = true;
+              return items.map((item, index) => `<section class="slip"><h2>厨房　Table ${escapeHtml(order.table)}</h2><div>注文 #${escapeHtml(order.id)} ・ ${time} ・ ${items.length}品中 ${index + 1}</div><hr><div class="large">${escapeHtml(item.n)} × ${quantity(item)}</div><hr><div>大人${escapeHtml(order.adultCount ?? 0)} 子${escapeHtml(order.childCount ?? 0)}${order.allergy === "あり" ? " ／ アレルギーあり" : ""}</div></section>`).join("");
+            }).join("");
+            writeOrders();
+            print(printJobs);
+          }
+          render();
+        } catch (error) {
+          showNotice(`厨房画面からの注文を更新できませんでした（${error.message}）`, true);
+        }
+      }
+
+      function tableOrders(table) {
+        return orders.filter(order => !order.paid && tableKey(order.table) === tableKey(table));
+      }
+
+      function print(html) {
+        printArea.innerHTML = html;
+        window.print();
+      }
+
+      function receiptHtml(table, list, title = "レシート") {
+        const total = list.reduce((sum, order) => sum + orderTotal(order), 0);
+        const items = list.flatMap(order => order.items.filter(item => quantity(item) > 0).map(item => ({
+          name: item.n, quantity: quantity(item), amount: (Number(item.p) || 0) * quantity(item)
+        })));
+        const itemRows = items.map(item => `<tr><td>${escapeHtml(item.name)}</td><td style="text-align:right">×${item.quantity}</td><td style="text-align:right">${yen(item.amount)}</td></tr>`).join("");
+        return `<section class="slip"><h2>あじまるや</h2><div>${title} ・ Table ${escapeHtml(table)}</div><div>${escapeHtml(new Date().toLocaleString("ja-JP"))}</div><hr>
+          <table>${itemRows}</table><hr><div class="large">合計　${yen(total)}</div></section>`;
+      }
+
+      function printInvoice(table) {
+        const list = tableOrders(table);
+        if (!list.length) return;
+        const suggestedName = [...new Set(list.map(order => order.receiptName).filter(Boolean))][0] || "";
+        const name = window.prompt("領収書の宛名", suggestedName);
+        if (name === null) return;
+        const total = list.reduce((sum, order) => sum + orderTotal(order), 0);
+        list.forEach(order => { order.receiptName = name.trim(); });
+        writeOrders();
+        render();
+        print(`<section class="slip"><h2>領 収 書</h2><div class="large">${escapeHtml(name.trim() || "　　　　　")} 様</div><p>金額</p><div class="large">${yen(total)}</div><p>但し　お飲食代として</p><div>${escapeHtml(new Date().toLocaleDateString("ja-JP"))}</div><hr><div>あじまるや</div></section>`);
+      }
+
+      function printKitchenOrder(order) {
+        const items = order.items.filter(item => quantity(item) > 0);
+        const time = new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+        print(items.map((item, index) => `<section class="slip">
+          <h2>厨房　Table ${escapeHtml(order.table)}</h2>
+          <div>注文 #${escapeHtml(order.id)} ・ ${time} ・ ${items.length}品中 ${index + 1}</div><hr>
+          <div class="large">${escapeHtml(item.n)} × ${quantity(item)}</div><hr>
+          <div>大人${escapeHtml(order.adultCount ?? 0)} 子${escapeHtml(order.childCount ?? 0)}${order.allergy === "あり" ? " ／ アレルギーあり" : ""}</div>
+        </section>`).join(""));
+        order.kitchenPrinted = true;
+        writeOrders();
+        render();
+        showNotice(`注文 #${order.id} を印刷済みにしました。`);
+      }
+
+      tablesElement.addEventListener("click", event => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const action = button.dataset.action;
+        const table = button.dataset.table;
+        const list = tableOrders(table);
+        if (action === "cancel") {
+          const order = orders.find(entry => entry.id === button.dataset.key);
+          const item = order?.items[Number(button.dataset.index)];
+          if (!item || quantity(item) < 1 || !window.confirm(`「${item.n}」を1個取り消しますか？`)) return;
+          item.cancelledQty = (Number(item.cancelledQty) || 0) + 1;
+          writeOrders();
+          render();
+          showNotice(`「${item.n}」を1個取り消しました。`);
+        } else if (action === "call") {
+          if (!list.length) return;
+          list.forEach(order => { order.callCustomerAt = Date.now(); });
+          writeOrders();
+          showNotice(`Table ${table} のお客様をカウンターへ呼び出しました。`);
+        } else if (action === "receipt") {
+          if (list.length) print(receiptHtml(table, list));
+        } else if (action === "invoice") {
+          printInvoice(table);
+        } else if (action === "pay") {
+          if (!list.length) return;
+          const total = list.reduce((sum, order) => sum + orderTotal(order), 0);
+          const method = button.dataset.method;
+          if (!window.confirm(`Table ${table}　${yen(total)} を「${METHODS[method]}」で会計しますか？`)) return;
+          const paidAt = Date.now();
+          list.forEach(order => {
+            order.paid = true;
+            order.payMethod = method;
+            order.paidAt = paidAt;
+            order.status = "served";
+          });
+          writeOrders();
+          render();
+          showNotice(`Table ${table} の会計（${yen(total)}・${METHODS[method]}）を記録しました。`);
+        }
+      });
+
+      historyElement.addEventListener("click", event => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const order = orders.find(entry => entry.id === button.dataset.key && entry.paid);
+        if (!order) return;
+        if (button.dataset.action === "change-method") {
+          const selection = document.getElementById(`method-${order.id}`);
+          if (!selection || !METHODS[selection.value]) return;
+          order.payMethod = selection.value;
+          writeOrders();
+          render();
+          showNotice(`注文 #${order.id} の支払方法を${METHODS[selection.value]}に変更しました。`);
+        } else if (button.dataset.action === "paid-receipt") {
+          print(receiptHtml(order.table, [order], `会計済み ${METHODS[order.payMethod] || ""}`));
+        }
+      });
+
+      document.getElementById("printPending").addEventListener("click", () => {
+        const pending = orders.filter(order => order.status === "new" && !order.kitchenPrinted && !order.paid);
+        if (!pending.length) {
+          showNotice("印刷待ちの新規注文はありません。");
+          return;
+        }
+        const html = pending.flatMap(order => {
+          const items = order.items.filter(item => quantity(item) > 0);
+          const time = new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+          order.kitchenPrinted = true;
+          return items.map((item, index) => `<section class="slip"><h2>厨房　Table ${escapeHtml(order.table)}</h2><div>注文 #${escapeHtml(order.id)} ・ ${time} ・ ${items.length}品中 ${index + 1}</div><hr><div class="large">${escapeHtml(item.n)} × ${quantity(item)}</div><hr><div>大人${escapeHtml(order.adultCount ?? 0)} 子${escapeHtml(order.childCount ?? 0)}${order.allergy === "あり" ? " ／ アレルギーあり" : ""}</div></section>`);
+        }).join("");
+        writeOrders();
+        render();
+        print(html);
+        showNotice(`${pending.length}件の注文を印刷済みにしました。`);
+      });
+
+      document.getElementById("printSummary").addEventListener("click", () => {
+        const paid = paidOnReportDate();
+        const rows = Object.entries(METHODS).map(([method, label]) => {
+          const group = paid.filter(order => (METHODS[order.payMethod] ? order.payMethod : "cash") === method);
+          return `<tr><td>${label}</td><td style="text-align:right">${group.length}件</td><td style="text-align:right">${yen(group.reduce((sum, order) => sum + orderTotal(order), 0))}</td></tr>`;
+        }).join("");
+        print(`<section class="slip"><h2>営業集計</h2><div>${escapeHtml(reportDate)}</div><hr><table>${rows}</table><hr><div class="large">合計　${yen(paid.reduce((sum, order) => sum + orderTotal(order), 0))}</div></section>`);
+      });
+
+      document.getElementById("reportDate").value = reportDate;
+      document.getElementById("reportDate").addEventListener("change", event => {
+        if (!event.target.value) return;
+        reportDate = event.target.value;
+        render();
+      });
+      const autoPrint = document.getElementById("autoPrint");
+      try {
+        autoPrint.checked = localStorage.getItem(AUTO_PRINT_KEY) !== "false";
+        autoPrintEnabled = autoPrint.checked;
+      } catch (error) {
+        showNotice(`印刷設定を読み込めませんでした（${error.message}）`, true);
+      }
+      autoPrint.addEventListener("change", () => {
+        autoPrintEnabled = autoPrint.checked;
+        try {
+          localStorage.setItem(AUTO_PRINT_KEY, String(autoPrint.checked));
+          showNotice(autoPrint.checked ? "厨房の自動印刷を有効にしました。" : "厨房の自動印刷を停止しました。");
+        } catch (error) {
+          showNotice(`印刷設定を保存できませんでした（${error.message}）`, true);
+        }
+      });
+      window.addEventListener("storage", event => {
+        if (event.key === STORAGE_KEY && event.newValue) refreshFromOtherPage(event.newValue);
+        if (event.key === AUTO_PRINT_KEY) {
+          autoPrint.checked = event.newValue !== "false";
+          autoPrintEnabled = autoPrint.checked;
+        }
+      });
+      document.getElementById("clock").textContent = new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric", month: "numeric", day: "numeric", weekday: "short",
+        hour: "2-digit", minute: "2-digit", second: "2-digit"
+      }).format(today);
+      render();
+      setInterval(() => {
+        document.getElementById("clock").textContent = new Intl.DateTimeFormat("ja-JP", {
+          year: "numeric", month: "numeric", day: "numeric", weekday: "short",
+          hour: "2-digit", minute: "2-digit", second: "2-digit"
+        }).format(new Date());
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>

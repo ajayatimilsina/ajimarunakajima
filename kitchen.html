@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111820">
+  <title>あじまるや | 厨房ディスプレイ</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111820;
+      --panel: #19232d;
+      --panel-raised: #202c37;
+      --border: #2b3946;
+      --text: #f2f5f7;
+      --muted: #98a7b5;
+      --blue: #71c7e8;
+      --blue-dark: #123341;
+      --amber: #f4bd58;
+      --amber-dark: #493715;
+      --green: #73d2a0;
+      --green-dark: #183b2b;
+      --red: #ff8b83;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    window.addEventListener("storage", event => {
+      if (event.key !== STORAGE_KEY || !event.newValue) return;
+      try {
+        const updatedOrders = JSON.parse(event.newValue);
+        if (!Array.isArray(updatedOrders) || updatedOrders.some(order => !order || !Array.isArray(order.items))) {
+          throw new Error("保存された注文データの形式が正しくありません。");
+        }
+        updatedOrders.forEach(order => order.items.forEach(item => {
+          if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
+        }));
+        orders = updatedOrders;
+        render();
+      } catch (error) {
+        showNotice(`別画面からの注文を更新できませんでした（${error.message}）`, true);
+      }
+    });
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); }
+    button, select { font: inherit; }
+    button {
+      min-height: 42px;
+      padding: 9px 13px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--panel-raised);
+      color: var(--text);
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    button:hover { border-color: #526779; background: #293947; }
+    button:active { transform: translateY(1px); }
+    button:focus-visible, select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .primary { border-color: var(--blue); background: var(--blue); color: #10232c; font-weight: 750; }
+    .primary:hover { border-color: #9cdef4; background: #9cdef4; }
+    .quiet { background: transparent; }
+
+    .topbar {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      padding: 10px clamp(16px, 3vw, 36px);
+      border-bottom: 1px solid var(--border);
+      background: #151e27;
+    }
+    .brand { font-size: 18px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+    .brand span { color: var(--blue); }
+    .topbar-label { padding-left: 20px; border-left: 1px solid var(--border); color: var(--muted); font-size: 14px; }
+    .topbar-link { color: var(--blue); font-size: 13px; }
+    .topbar-spacer { flex: 1; }
+    .demo-badge, .connection {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 10px;
+      border: 1px solid #68502a;
+      border-radius: 999px;
+      background: #302719;
+      color: #f3ce83;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .demo-badge::before { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); content: ""; }
+    .paper-control { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+    select { min-height: 36px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); }
+
+    main { max-width: 1680px; margin: 0 auto; padding: 25px clamp(16px, 3vw, 36px) 40px; }
+    .heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
+    h1 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -.03em; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    .clock { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+    .overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 23px 0 20px; }
+    .stat {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 82px;
+      padding: 15px 18px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+    .stat-label { color: var(--muted); font-size: 13px; }
+    .stat-value { margin-top: 2px; font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; font-size: 20px; }
+    .stat.new .stat-icon { background: var(--amber-dark); }
+    .stat.preparing .stat-icon { background: var(--blue-dark); }
+    .stat.served .stat-icon { background: var(--green-dark); }
+
+    .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 15px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 7px; }
+    .filter {
+      min-height: 37px;
+      padding: 7px 11px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .filter[aria-pressed="true"] { border-color: #61798b; background: #2a3a47; color: var(--text); }
+    .toolbar-spacer { flex: 1; }
+    .sound-button { font-size: 13px; }
+    .sound-button[aria-pressed="true"] { border-color: #387a59; background: var(--green-dark); color: #a8f0c7; }
+    .notice { min-height: 22px; margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+    .notice[role="alert"] { color: var(--red); }
+
+    .order-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 335px), 1fr)); gap: 14px; align-items: start; }
+    .order-card { overflow: hidden; border: 1px solid var(--border); border-top: 3px solid var(--amber); border-radius: 13px; background: var(--panel); }
+    .order-card.preparing { border-top-color: var(--blue); }
+    .order-card.served { border-top-color: var(--green); }
+    .order-card.overdue { box-shadow: 0 0 0 1px #773a36; }
+    .card-main { padding: 16px 16px 13px; }
+    .card-heading, .order-meta, .card-actions { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+    .table-name { font-size: 23px; font-weight: 850; letter-spacing: -.03em; }
+    .status { padding: 5px 9px; border-radius: 999px; background: var(--amber-dark); color: #f7d78e; font-size: 12px; font-weight: 750; white-space: nowrap; }
+    .preparing .status { background: var(--blue-dark); color: #9bddf2; }
+    .served .status { background: var(--green-dark); color: #a7ebc2; }
+    .order-meta { margin-top: 9px; color: var(--muted); font-size: 12px; }
+    .elapsed { color: var(--green); font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .elapsed.warning { color: var(--amber); }
+    .elapsed.late { color: var(--red); }
+    .allergy {
+      margin-top: 12px;
+      padding: 8px 10px;
+      border: 1px solid #70433e;
+      border-radius: 8px;
+      background: #382421;
+      color: #ffb0a8;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .allergy-note { margin: 4px 0 0; color: #ffc1ba; font-size: 12px; }
+    .items { display: grid; gap: 8px; margin: 15px 0 4px; }
+    .item { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 17px; font-weight: 720; }
+    .item.cancelled { color: #81909c; text-decoration: line-through; }
+    .item-count { color: #b9c6ce; font-size: 15px; white-space: nowrap; }
+    .cancel-button { min-height: 30px; padding: 4px 8px; color: #c5d0d6; font-size: 11px; }
+    .call-notice { margin: 13px 0 0; color: var(--amber); font-size: 13px; font-weight: 700; }
+    .served-note { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+    .card-actions { justify-content: flex-start; flex-wrap: wrap; padding: 12px 16px 15px; border-top: 1px solid var(--border); }
+    .card-actions button { min-height: 37px; padding: 7px 10px; font-size: 12px; }
+    .card-actions .primary { margin-left: auto; }
+    .empty {
+      grid-column: 1 / -1;
+      display: grid;
+      min-height: 190px;
+      place-content: center;
+      justify-items: center;
+      gap: 8px;
+      border: 1px dashed #3a4b59;
+      border-radius: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .empty strong { color: var(--text); font-size: 17px; }
+    .empty-icon { font-size: 28px; }
+    .utility { display: flex; justify-content: center; gap: 9px; margin-top: 23px; }
+    .utility button { min-height: 36px; color: var(--muted); font-size: 12px; }
+    #printArea { display: none; }
+
+    @media (max-width: 650px) {
+      .topbar { gap: 12px; padding-inline: 14px; }
+      .topbar-label { display: none; }
+      .demo-badge { font-size: 0; gap: 0; padding: 7px; }
+      .demo-badge::before { width: 8px; height: 8px; }
+      .paper-control { gap: 5px; font-size: 12px; }
+      main { padding-top: 20px; }
+      .overview { gap: 8px; }
+      .stat { min-height: 70px; padding: 11px; }
+      .stat-label { font-size: 11px; }
+      .stat-value { font-size: 23px; }
+      .stat-icon { width: 32px; height: 32px; font-size: 16px; }
+      .toolbar { align-items: flex-start; }
+      .toolbar-spacer { display: none; }
+      .filters { width: 100%; }
+      .order-grid { grid-template-columns: 1fr; }
+      .clock { font-size: 12px; }
+    }
+    @media print {
+      body { background: #fff; color: #000; }
+      body > *:not(#printArea) { display: none !important; }
+      #printArea { display: block; width: var(--paper-width, 80mm); padding: 2mm; color: #000; font: 14px/1.4 "MS Gothic", monospace; }
+      .kitchen-slip { width: var(--paper-width, 80mm); padding: 2mm; page-break-after: always; break-after: page; }
+      .kitchen-slip:last-child { page-break-after: auto; break-after: auto; }
+      .kitchen-slip h2 { margin: 0 0 2mm; font-size: 18px; }
+      .kitchen-slip .slip-item { font-size: 22px; font-weight: 800; overflow-wrap: anywhere; }
+      .kitchen-slip hr { border: 0; border-top: 1px dashed #000; }
+      @page { size: var(--paper-width, 80mm) auto; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span>あじまるや</span></div>
+    <div class="topbar-label">厨房ディスプレイ</div>
+    <a class="topbar-link" href="index.html">お客様画面</a>
+    <a class="topbar-link" href="admin.html">お会計</a>
+    <div class="topbar-spacer"></div>
+    <span class="demo-badge" title="注文はこのブラウザー内に保存されます">デモモード</span>
+    <label class="paper-control" for="paperWidth">紙幅
+      <select id="paperWidth" aria-label="レシートの紙幅">
+        <option value="80">80mm</option>
+        <option value="58">58mm</option>
+      </select>
+    </label>
+  </header>
+
+  <main>
+    <section class="heading" aria-labelledby="pageTitle">
+      <div>
+        <h1 id="pageTitle">厨房ディスプレイ</h1>
+        <p class="subtitle">注文を確認して、できあがった料理をお客様へお届けしましょう。</p>
+      </div>
+      <time class="clock" id="clock"></time>
+    </section>
+
+    <section class="overview" aria-label="注文状況">
+      <div class="stat new"><div><div class="stat-label">新規注文</div><div class="stat-value" id="newCount">0</div></div><span class="stat-icon" aria-hidden="true">◷</span></div>
+      <div class="stat preparing"><div><div class="stat-label">調理中</div><div class="stat-value" id="preparingCount">0</div></div><span class="stat-icon" aria-hidden="true">♨</span></div>
+      <div class="stat served"><div><div class="stat-label">提供済み・未会計</div><div class="stat-value" id="servedCount">0</div></div><span class="stat-icon" aria-hidden="true">✓</span></div>
+    </section>
+
+    <section class="toolbar" aria-label="注文操作">
+      <div class="filters" role="group" aria-label="注文の絞り込み">
+        <button class="filter" type="button" data-filter="all" aria-pressed="true">すべて <span id="allCount">0</span></button>
+        <button class="filter" type="button" data-filter="new" aria-pressed="false">新規</button>
+        <button class="filter" type="button" data-filter="preparing" aria-pressed="false">調理中</button>
+        <button class="filter" type="button" data-filter="served" aria-pressed="false">提供済み</button>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <button class="sound-button" id="speechToggle" type="button" aria-pressed="false">🔈 注文読み上げ：OFF</button>
+      <button class="quiet" id="thanksButton" type="button">ありがとうございました</button>
+      <button class="quiet" id="welcomeButton" type="button">いらっしゃいませ</button>
+    </section>
+
+    <p class="notice" id="notice" aria-live="polite"></p>
+    <section class="order-grid" id="orders" aria-live="polite" aria-label="注文一覧"></section>
+    <div class="utility">
+      <button id="addOrder" type="button">＋ デモ注文を追加</button>
+      <button id="resetOrders" type="button">サンプル注文に戻す</button>
+    </div>
+  </main>
+
+  <div id="printArea" aria-hidden="true"></div>
+
+  <script>
+    (() => {
+      const STORAGE_KEY = "ajimaru-kitchen-demo-orders-v1";
+      const PAPER_KEY = "ajimaru-kitchen-paper-width";
+      const LIMIT_MS = 20 * 60 * 1000;
+      const DEMO_PRICES = {
+        "鶏のから揚げ定食": 980, "生ビール": 580, "焼き魚定食": 1100, "冷ややっこ": 350,
+        "お子さまうどん": 580, "天ぷら盛り合わせ": 780, "親子丼": 880, "味噌汁": 180,
+        "本日のおすすめ定食": 950, "ウーロン茶": 250
+      };
+      const now = Date.now();
+      const samples = [
+        {
+          id: "A-1048", table: "3", t: now - 4 * 60 * 1000, adultCount: 2, childCount: 0,
+          status: "new", allergy: "なし", allergyNote: "", callCustomerAt: 0,
+          items: [{ n: "鶏のから揚げ定食", p: 980, q: 2, cancelledQty: 0 }, { n: "生ビール", p: 580, q: 1, cancelledQty: 0 }]
+        },
+        {
+          id: "A-1047", table: "カウンター 2", t: now - 11 * 60 * 1000, adultCount: 1, childCount: 0,
+          status: "preparing", allergy: "あり", allergyNote: "えび・かに", callCustomerAt: 0,
+          items: [{ n: "焼き魚定食", p: 1100, q: 1, cancelledQty: 0 }, { n: "冷ややっこ", p: 350, q: 1, cancelledQty: 0 }]
+        },
+        {
+          id: "A-1046", table: "5", t: now - 23 * 60 * 1000, adultCount: 2, childCount: 1,
+          status: "served", allergy: "なし", allergyNote: "", callCustomerAt: 0,
+          items: [{ n: "お子さまうどん", p: 580, q: 1, cancelledQty: 0 }, { n: "天ぷら盛り合わせ", p: 780, q: 1, cancelledQty: 0 }]
+        },
+        {
+          id: "A-1045", table: "1", t: now - 2 * 60 * 1000, adultCount: 3, childCount: 0,
+          status: "new", allergy: "あり", allergyNote: "卵", callCustomerAt: 0,
+          items: [{ n: "親子丼", p: 880, q: 1, cancelledQty: 0 }, { n: "味噌汁", p: 180, q: 2, cancelledQty: 0 }]
+        }
+      ];
+
+      const ordersElement = document.getElementById("orders");
+      const noticeElement = document.getElementById("notice");
+      const speechButton = document.getElementById("speechToggle");
+      let filter = "all";
+      let speechEnabled = false;
+      let orders = loadOrders();
+
+      function loadOrders() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (!saved) return structuredClone(samples);
+          const parsed = JSON.parse(saved);
+          if (!Array.isArray(parsed) || parsed.some(order => !order || !Array.isArray(order.items))) {
+            throw new Error("保存された注文データの形式が正しくありません。");
+          }
+          parsed.forEach(order => order.items.forEach(item => {
+            if (!Number.isFinite(Number(item.p)) && DEMO_PRICES[item.n] !== undefined) item.p = DEMO_PRICES[item.n];
+          }));
+          return parsed;
+        } catch (error) {
+          showNotice(`注文を読み込めませんでした。サンプル注文を表示します（${error.message}）`, true);
+          return structuredClone(samples);
+        }
+      }
+
+      function saveOrders() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+          noticeElement.textContent = "";
+          noticeElement.removeAttribute("role");
+        } catch (error) {
+          showNotice(`注文を保存できませんでした。ブラウザーの保存領域を確認してください（${error.message}）`, true);
+        }
+      }
+
+      function showNotice(message, isError = false) {
+        noticeElement.textContent = message;
+        if (isError) noticeElement.setAttribute("role", "alert");
+        else noticeElement.removeAttribute("role");
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, character => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[character]);
+      }
+
+      function remaining(item) {
+        return Math.max(0, Number(item.q) - Math.min(Number(item.q), Number(item.cancelledQty) || 0));
+      }
+
+      function updateCounts() {
+        const openOrders = orders.filter(order => !order.paid);
+        document.getElementById("newCount").textContent = openOrders.filter(order => order.status === "new").length;
+        document.getElementById("preparingCount").textContent = openOrders.filter(order => order.status === "preparing").length;
+        document.getElementById("servedCount").textContent = openOrders.filter(order => order.status === "served").length;
+        document.getElementById("allCount").textContent = openOrders.length;
+      }
+
+      function render() {
+        updateCounts();
+        const visibleOrders = orders
+          .filter(order => !order.paid)
+          .filter(order => filter === "all" || order.status === filter)
+          .sort((first, second) => first.t - second.t);
+
+        if (!visibleOrders.length) {
+          const label = filter === "all" ? "注文" : ({ new: "新規注文", preparing: "調理中の注文", served: "提供済みの注文" })[filter];
+          ordersElement.innerHTML = `<div class="empty"><span class="empty-icon" aria-hidden="true">🍵</span><strong>${label}はありません</strong><span>新しい注文が入るとここに表示されます。</span></div>`;
+          return;
+        }
+
+        ordersElement.innerHTML = visibleOrders.map(order => {
+          const isServed = order.status === "served";
+          const statusLabel = isServed ? "提供済み・未会計" : order.status === "preparing" ? "調理中" : "新規";
+          const items = order.items.map((item, index) => {
+            const count = remaining(item);
+            return `<div class="item${count === 0 ? " cancelled" : ""}">
+              <span>${escapeHtml(item.n)} <span class="item-count">× ${escapeHtml(item.q)}${item.cancelledQty ? `（${escapeHtml(item.cancelledQty)}個取消）` : ""}</span></span>
+              ${count > 0 && !isServed ? `<button class="cancel-button" type="button" data-action="cancel" data-key="${escapeHtml(order.id)}" data-index="${index}" aria-label="${escapeHtml(item.n)}を1個取消">1個取消</button>` : ""}
+            </div>`;
+          }).join("");
+          const callControls = order.callCustomerAt
+            ? `<p class="call-notice">🔔 カウンター呼び出し中</p>`
+            : "";
+          const elapsed = Math.max(0, Date.now() - order.t);
+          const overdue = elapsed > LIMIT_MS && !isServed;
+          const allergy = order.allergy === "あり"
+            ? `<div class="allergy">⚠ アレルギーあり${order.allergyNote ? `<p class="allergy-note">対象：${escapeHtml(order.allergyNote)}</p>` : ""}</div>`
+            : "";
+          const controls = isServed
+            ? `<p class="served-note">提供済みです。お会計後も注文履歴として表示されます。</p>`
+            : `<div class="card-actions">
+                <button type="button" data-action="print" data-key="${escapeHtml(order.id)}">🖨 印刷</button>
+                ${order.callCustomerAt
+                  ? `<button type="button" data-action="acknowledge" data-key="${escapeHtml(order.id)}">呼び出し解除</button>`
+                  : `<button type="button" data-action="call" data-key="${escapeHtml(order.id)}">カウンターへ呼び出す</button>`}
+                ${order.status === "new" ? `<button class="primary" type="button" data-action="preparing" data-key="${escapeHtml(order.id)}">調理開始</button>` : ""}
+                <button class="primary" type="button" data-action="served" data-key="${escapeHtml(order.id)}">提供済み</button>
+              </div>`;
+
+          return `<article class="order-card ${escapeHtml(order.status)}${overdue ? " overdue" : ""}" data-order="${escapeHtml(order.id)}">
+            <div class="card-main">
+              <div class="card-heading"><span class="table-name">Table ${escapeHtml(order.table)}</span><span class="status">${statusLabel}</span></div>
+              <div class="order-meta"><span>#${escapeHtml(order.id)} ・ ${escapeHtml(new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))} ・ 大人${escapeHtml(order.adultCount)} 子${escapeHtml(order.childCount)}</span><span class="elapsed" data-start="${Number(order.t)}"></span></div>
+              ${allergy}
+              <div class="items">${items}</div>
+              ${callControls}
+            </div>
+            ${controls}
+          </article>`;
+        }).join("");
+        updateTimers();
+      }
+
+      function updateTimers() {
+        const currentTime = Date.now();
+        document.querySelectorAll(".elapsed").forEach(element => {
+          const elapsed = Math.max(0, currentTime - Number(element.dataset.start));
+          const minutes = Math.floor(elapsed / 60000);
+          const seconds = Math.floor(elapsed / 1000) % 60;
+          element.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+          element.classList.toggle("warning", elapsed >= 15 * 60 * 1000 && elapsed < LIMIT_MS);
+          element.classList.toggle("late", elapsed >= LIMIT_MS);
+          element.closest(".order-card")?.classList.toggle("overdue", elapsed >= LIMIT_MS && !element.closest(".order-card").classList.contains("served"));
+        });
+      }
+
+      function updateClock() {
+        const date = new Date();
+        document.getElementById("clock").textContent = new Intl.DateTimeFormat("ja-JP", {
+          year: "numeric", month: "numeric", day: "numeric", weekday: "short",
+          hour: "2-digit", minute: "2-digit", second: "2-digit"
+        }).format(date);
+      }
+
+      function setStatus(key, status) {
+        const order = orders.find(entry => entry.id === key);
+        if (!order) return;
+        order.status = status;
+        saveOrders();
+        render();
+        showNotice(status === "preparing" ? `Table ${order.table} の調理を開始しました。` : `Table ${order.table} を提供済みにしました。`);
+      }
+
+      function setPaperWidth(value) {
+        if (value !== "58" && value !== "80") return;
+        document.documentElement.style.setProperty("--paper-width", `${value}mm`);
+        try {
+          localStorage.setItem(PAPER_KEY, value);
+        } catch (error) {
+          showNotice(`紙幅の設定を保存できませんでした（${error.message}）`, true);
+        }
+      }
+
+      function printOrder(order) {
+        const time = new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+        const items = order.items.filter(item => remaining(item) > 0);
+        document.getElementById("printArea").innerHTML = items.map((item, index) => `
+          <section class="kitchen-slip">
+            <h2>厨房　Table ${escapeHtml(order.table)}</h2>
+            <div>注文 #${escapeHtml(order.id)} ・ ${time} ・ ${items.length}品中 ${index + 1}</div>
+            <hr><div class="slip-item">${escapeHtml(item.n)} × ${remaining(item)}</div><hr>
+            <div>大人${escapeHtml(order.adultCount)} 子${escapeHtml(order.childCount)}${order.allergy === "あり" ? " ／ アレルギーあり" : ""}</div>
+            ${order.allergyNote ? `<div>対象：${escapeHtml(order.allergyNote)}</div>` : ""}
+          </section>`).join("");
+        window.print();
+      }
+
+      function speak(text) {
+        if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+          showNotice("このブラウザーは音声読み上げに対応していません。", true);
+          return;
+        }
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "ja-JP";
+        const voice = speechSynthesis.getVoices().find(candidate => candidate.lang.toLowerCase().startsWith("ja"));
+        if (voice) utterance.voice = voice;
+        utterance.onerror = event => {
+          if (event.error !== "canceled" && event.error !== "interrupted") showNotice("音声を再生できませんでした。音量とブラウザー設定を確認してください。", true);
+        };
+        speechSynthesis.speak(utterance);
+      }
+
+      ordersElement.addEventListener("click", event => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const order = orders.find(entry => entry.id === button.dataset.key);
+        if (!order) return;
+        switch (button.dataset.action) {
+          case "preparing":
+          case "served":
+            setStatus(order.id, button.dataset.action);
+            break;
+          case "cancel": {
+            const item = order.items[Number(button.dataset.index)];
+            if (!item || remaining(item) < 1) return;
+            item.cancelledQty = (Number(item.cancelledQty) || 0) + 1;
+            saveOrders();
+            render();
+            showNotice(`「${item.n}」を1個取り消しました。`);
+            break;
+          }
+          case "call":
+            order.callCustomerAt = Date.now();
+            saveOrders();
+            render();
+            showNotice(`Table ${order.table} のお客様をカウンターへ呼び出しました。`);
+            break;
+          case "acknowledge":
+            order.callCustomerAt = 0;
+            saveOrders();
+            render();
+            showNotice("カウンター呼び出しを解除しました。");
+            break;
+          case "print":
+            printOrder(order);
+            break;
+        }
+      });
+
+      document.querySelector(".filters").addEventListener("click", event => {
+        const button = event.target.closest("button[data-filter]");
+        if (!button) return;
+        filter = button.dataset.filter;
+        document.querySelectorAll(".filter").forEach(element => element.setAttribute("aria-pressed", String(element === button)));
+        render();
+      });
+
+      speechButton.addEventListener("click", () => {
+        speechEnabled = !speechEnabled;
+        speechButton.setAttribute("aria-pressed", String(speechEnabled));
+        speechButton.textContent = speechEnabled ? "🔊 注文読み上げ：ON" : "🔈 注文読み上げ：OFF";
+        showNotice(speechEnabled ? "新しいデモ注文を追加すると、内容を読み上げます。" : "注文の自動読み上げを停止しました。");
+      });
+      document.getElementById("thanksButton").addEventListener("click", () => speak("ありがとうございました。"));
+      document.getElementById("welcomeButton").addEventListener("click", () => speak("いらっしゃいませ。"));
+      document.getElementById("paperWidth").addEventListener("change", event => setPaperWidth(event.target.value));
+      document.getElementById("addOrder").addEventListener("click", () => {
+        const number = Date.now().toString().slice(-5);
+        const order = {
+          id: `A-${number}`, table: String(Math.floor(Math.random() * 8) + 1), t: Date.now(),
+          adultCount: 2, childCount: 0, status: "new", allergy: "なし", allergyNote: "", callCustomerAt: 0,
+          items: [{ n: "本日のおすすめ定食", p: 950, q: 1, cancelledQty: 0 }, { n: "ウーロン茶", p: 250, q: 1, cancelledQty: 0 }]
+        };
+        orders.push(order);
+        saveOrders();
+        render();
+        showNotice(`新しいデモ注文 #${order.id} を受信しました。`);
+        if (speechEnabled) speak(`テーブル${order.table}。${order.items.map(item => item.n).join("。")}`);
+      });
+      document.getElementById("resetOrders").addEventListener("click", () => {
+        orders = structuredClone(samples);
+        saveOrders();
+        render();
+        showNotice("サンプル注文に戻しました。");
+      });
+
+      const paperSelect = document.getElementById("paperWidth");
+      try {
+        const savedWidth = localStorage.getItem(PAPER_KEY);
+        if (savedWidth === "58" || savedWidth === "80") paperSelect.value = savedWidth;
+      } catch (error) {
+        showNotice(`紙幅の設定を読み込めませんでした（${error.message}）`, true);
+      }
+      setPaperWidth(paperSelect.value);
+      render();
+      updateClock();
+      setInterval(updateClock, 1000);
+      setInterval(updateTimers, 1000);
+    })();
+  </script>
+</body>
+</html>

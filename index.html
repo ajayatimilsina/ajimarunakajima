@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111820">
+  <title>あじまるや | ご注文</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111820;
+      --panel: #19232d;
+      --raised: #202c37;
+      --border: #2b3946;
+      --text: #f2f5f7;
+      --muted: #98a7b5;
+      --blue: #71c7e8;
+      --blue-dark: #123341;
+      --green: #73d2a0;
+      --green-dark: #183b2b;
+      --amber: #f4bd58;
+      --red: #ff9d94;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); }
+    button, input, select { font: inherit; }
+    button, input, select {
+      min-height: 40px;
+      padding: 8px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--raised);
+      color: var(--text);
+    }
+    button { cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .15s ease; }
+    button:hover { border-color: #526779; background: #293947; }
+    button:active { transform: translateY(1px); }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    .primary { border-color: var(--blue); background: var(--blue); color: #10232c; font-weight: 750; }
+    .primary:hover { border-color: #9cdef4; background: #9cdef4; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 56px;
+      padding: 8px clamp(15px, 3vw, 36px);
+      border-bottom: 1px solid var(--border);
+      background: #151e27;
+    }
+    .brand { font-weight: 800; white-space: nowrap; }
+    .brand span { color: var(--blue); }
+    .topbar-spacer { flex: 1; }
+    .topbar a { color: var(--muted); font-size: 12px; text-decoration: none; white-space: nowrap; }
+    .topbar a:hover { color: var(--blue); }
+    .demo-label { padding: 5px 8px; border: 1px solid #68502a; border-radius: 999px; background: #302719; color: #f3ce83; font-size: 10px; white-space: nowrap; }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 20px clamp(14px, 3vw, 30px) 155px; }
+    .welcome { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+    h1 { margin: 0; font-size: clamp(23px, 3vw, 30px); letter-spacing: -.03em; }
+    .welcome p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+    .guest-count { color: var(--blue); font-size: 13px; font-weight: 700; }
+
+    .guest-panel {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(100px, 1fr));
+      gap: 11px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+    .field { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+    .field select, .field input { width: 100%; color: var(--text); font-size: 14px; }
+    .check-field { display: flex; align-items: center; gap: 8px; align-self: end; min-height: 40px; color: var(--text); font-size: 13px; }
+    .check-field input { width: 18px; height: 18px; min-height: 18px; accent-color: var(--blue); }
+
+    .category-nav {
+      position: sticky;
+      top: 56px;
+      z-index: 5;
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      margin: 16px -2px 8px;
+      padding: 8px 2px;
+      background: var(--bg);
+      scrollbar-width: thin;
+    }
+    .category-nav a {
+      flex: 0 0 auto;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 12px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .category-nav a:hover { border-color: var(--blue); color: var(--blue); }
+    .menu-section { margin-top: 18px; scroll-margin-top: 118px; }
+    .menu-section h2 { margin: 0 0 9px; font-size: 16px; }
+    .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 10px; }
+    .menu-card { display: flex; flex-direction: column; gap: 8px; min-height: 130px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); }
+    .menu-card.sold-out { opacity: .62; }
+    .menu-card-head { display: flex; align-items: flex-start; gap: 8px; }
+    .menu-emoji { font-size: 20px; line-height: 1.2; }
+    .menu-name { flex: 1; font-size: 14px; font-weight: 730; }
+    .sold-tag { padding: 3px 6px; border-radius: 999px; background: #532b29; color: #ffb4ac; font-size: 10px; white-space: nowrap; }
+    .price-line { display: flex; align-items: baseline; gap: 7px; color: var(--muted); font-size: 12px; }
+    .price-line strong { color: var(--text); font-size: 17px; }
+    .regular-price { color: #71808d; text-decoration: line-through; }
+    .option-control { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+    .option-control select { width: 100%; min-height: 34px; padding: 5px 8px; font-size: 12px; }
+    .quantity { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 3px; }
+    .quantity button { width: 38px; min-height: 36px; padding: 0; font-size: 20px; }
+    .quantity-value { min-width: 24px; font-size: 16px; font-weight: 800; text-align: center; }
+
+    .notice { min-height: 20px; margin: 12px 0 2px; color: var(--muted); font-size: 12px; }
+    .notice[role="alert"] { color: var(--red); }
+    .callout { display: none; margin: 13px 0; padding: 13px; border: 1px solid #8b6825; border-radius: 11px; background: #302719; color: #ffe2a6; }
+    .callout.visible { display: block; }
+    .callout strong { display: block; margin-bottom: 4px; font-size: 15px; }
+    .callout button { min-height: 32px; margin-top: 7px; padding: 5px 9px; font-size: 12px; }
+
+    .history { margin-top: 21px; padding: 15px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+    .history h2 { margin: 0 0 8px; font-size: 16px; }
+    .history-empty { color: var(--muted); font-size: 12px; }
+    .order-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); }
+    .order-details { min-width: 0; flex: 1; }
+    .order-details strong { font-size: 13px; }
+    .order-items, .order-time { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .order-status { padding: 4px 8px; border-radius: 999px; background: var(--blue-dark); color: #a4e4f8; font-size: 11px; white-space: nowrap; }
+    .order-status.preparing { background: #493715; color: #f4d08b; }
+    .order-status.served { background: var(--green-dark); color: #a9edc5; }
+    .order-status.paid { background: #273641; color: #bbc8d0; }
+    .order-timer { margin-top: 6px; color: var(--blue); font-size: 12px; }
+
+    .cart-bar {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 15;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+      background: #151e27ee;
+      backdrop-filter: blur(12px);
+    }
+    .cart-inner { display: flex; width: min(100%, 1120px); align-items: center; justify-content: space-between; gap: 16px; }
+    .cart-total-label { color: var(--muted); font-size: 11px; }
+    .cart-total { font-size: 22px; font-weight: 850; font-variant-numeric: tabular-nums; }
+    .cart-meta { margin-left: 8px; color: var(--muted); font-size: 11px; }
+    .submit { min-width: 190px; min-height: 48px; }
+    .submit span { display: block; font-size: 11px; font-weight: 550; }
+
+    @media (max-width: 700px) {
+      .topbar { gap: 9px; padding-inline: 12px; }
+      .topbar a { font-size: 11px; }
+      .demo-label { font-size: 9px; }
+      .guest-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .guest-panel .field:first-child { grid-column: span 2; }
+      .check-field { align-self: center; }
+      .category-nav { top: 53px; }
+      .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .menu-card { min-height: 145px; padding: 10px; }
+      .cart-inner { gap: 9px; }
+      .cart-total { font-size: 19px; }
+      .cart-meta { display: block; margin: 1px 0 0; }
+      .submit { min-width: 150px; }
+    }
+    @media (max-width: 380px) {
+      .topbar { gap: 7px; }
+      .brand { font-size: 12px; }
+      .topbar a { font-size: 10px; }
+      .demo-label { display: none; }
+      .menu-name { font-size: 13px; }
+      .submit { min-width: 132px; padding-inline: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span>あじまるや</span> &amp; 中島駅</div>
+    <div class="topbar-spacer"></div>
+    <a href="kitchen.html">厨房</a>
+    <a href="admin.html">お会計</a>
+    <span class="demo-label">デモ注文</span>
+  </header>
+  <main>
+    <section class="welcome">
+      <div><h1 id="tableTitle">Table 1</h1><p>メニューを選んで、ご注文ください。</p></div>
+      <span class="guest-count" id="guestCount">2名でご利用</span>
+    </section>
+
+    <section class="guest-panel" aria-label="ご利用人数とご注文情報">
+      <label class="field" for="tableSelect">テーブル
+        <select id="tableSelect"></select>
+      </label>
+      <label class="field" for="genderSelect">性別
+        <select id="genderSelect"><option value="All">指定なし</option><option value="Men">男性</option><option value="Women">女性</option></select>
+      </label>
+      <label class="field" for="adultSelect">大人
+        <select id="adultSelect"></select>
+      </label>
+      <label class="field" for="childSelect">子ども
+        <select id="childSelect"></select>
+      </label>
+      <label class="field" for="allergySelect">アレルギー
+        <select id="allergySelect"><option value="なし">なし</option><option value="あり">あり</option></select>
+      </label>
+      <label class="check-field"><input id="memberToggle" type="checkbox"> 会員価格</label>
+      <label class="check-field"><input id="receiptToggle" type="checkbox"> 領収書が必要</label>
+      <label class="field" id="receiptNameField" for="receiptName" hidden>領収書の宛名
+        <input id="receiptName" type="text" maxlength="60" autocomplete="organization" placeholder="宛名を入力">
+      </label>
+    </section>
+
+    <aside class="callout" id="customerCall" role="alert">
+      <strong>スタッフからのお知らせ</strong>
+      <span>カウンターへお越しください。</span>
+      <div id="callList"></div>
+    </aside>
+    <p class="notice" id="notice" aria-live="polite"></p>
+    <nav class="category-nav" id="categoryNav" aria-label="メニューカテゴリー"></nav>
+    <div id="menu"></div>
+
+    <section class="history" aria-labelledby="historyTitle">
+      <h2 id="historyTitle">このテーブルのご注文</h2>
+      <div id="orderHistory"></div>
+    </section>
+  </main>
+
+  <footer class="cart-bar">
+    <div class="cart-inner">
+      <div><div class="cart-total-label">ご注文合計</div><div class="cart-total" id="cartTotal">¥0</div><span class="cart-meta" id="cartMeta">0品 ・ 2名</span></div>
+      <button class="primary submit" id="submitOrder" type="button" disabled>注文を送信<span>内容をご確認ください</span></button>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const STORAGE_KEY = "ajimaru-kitchen-demo-orders-v1";
+      const MENU = [
+        { id: 1, category: "定食", name: "唐揚げ定食", price: 800, emoji: "🍱", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
+        { id: 2, category: "定食", name: "あじまる唐揚げ定食", price: 900, emoji: "🍱", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
+        { id: 3, category: "定食", name: "とんかつ定食", price: 880, emoji: "🍱", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
+        { id: 4, category: "定食", name: "みそとんかつ定食", price: 900, emoji: "🍱", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
+        { id: 5, category: "定食", name: "アジフライ定食", price: 850, emoji: "🐟", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
+        { id: 6, category: "定食", name: "ミックスフライ定食", price: 920, emoji: "🍤", options: [{ name: "ご飯大盛り", price: 100, kind: "quantity" }] },
+        { id: 7, category: "ナンセット", name: "プレーンナンセット", price: 770, emoji: "🫓", options: [
+          { name: "チーズナンに変更", price: 330, kind: "quantity" }, { name: "ガーリックナンに変更", price: 110, kind: "quantity" },
+          { name: "ごまナンに変更", price: 110, kind: "quantity" }, { name: "チョコナンに変更", price: 220, kind: "quantity" },
+          { name: "ハニーナンに変更", price: 110, kind: "quantity" }, { name: "ハニーチーズナンに変更", price: 440, kind: "quantity" },
+          { name: "辛さ", price: 0, kind: "select", choices: ["0", "1", "2"] }
+        ] },
+        { id: 8, category: "サブメニュー", name: "ご飯 小", price: 150, emoji: "🍚" },
+        { id: 9, category: "サブメニュー", name: "ご飯 中", price: 200, emoji: "🍚" },
+        { id: 10, category: "サブメニュー", name: "ご飯 大", price: 250, emoji: "🍚" },
+        { id: 11, category: "サブメニュー", name: "チキンティッカ", price: 440, emoji: "🍗" },
+        { id: 12, category: "サブメニュー", name: "サモサ", price: 330, emoji: "🥟" },
+        { id: 13, category: "サブメニュー", name: "ポテトフライ", price: 390, emoji: "🍟" },
+        { id: 14, category: "ドリンク", name: "生ビール", price: 550, memberPrice: 500, emoji: "🍺", options: [{ name: "男前（大）ジョッキ", price: 150, kind: "quantity" }] },
+        { id: 15, category: "ドリンク", name: "ジムビームハイボール", price: 480, memberPrice: 430, emoji: "🥃", options: [{ name: "男前（大）ジョッキ", price: 150, kind: "quantity" }] },
+        { id: 16, category: "ドリンク", name: "角ハイボール", price: 490, memberPrice: 440, emoji: "🥃", options: [{ name: "男前（大）ジョッキ", price: 150, kind: "quantity" }] },
+        { id: 17, category: "ドリンク", name: "レモンサワー", price: 440, memberPrice: 390, emoji: "🍋", options: [{ name: "男前（大）ジョッキ", price: 150, kind: "quantity" }] },
+        { id: 18, category: "ドリンク", name: "ウーロン茶", price: 400, memberPrice: 350, emoji: "🍵" },
+        { id: 19, category: "ドリンク", name: "ジンジャーエール", price: 400, memberPrice: 350, emoji: "🥤" },
+        { id: 20, category: "ドリンク", name: "オレンジジュース", price: 400, memberPrice: 350, emoji: "🍊" },
+        { id: 21, category: "飲み放題ドリンク", name: "ソフトドリンク（飲み放題）", price: 0, emoji: "🥤" }
+      ];
+      const cart = new Map();
+      const menuElement = document.getElementById("menu");
+      const noticeElement = document.getElementById("notice");
+      const tableSelect = document.getElementById("tableSelect");
+      const adultSelect = document.getElementById("adultSelect");
+      const childSelect = document.getElementById("childSelect");
+      let table = 1;
+      let guestType = "All";
+      let adultCount = 2;
+      let childCount = 0;
+      let allergy = "なし";
+      let memberPricing = false;
+      let receiptNeeded = false;
+      let orders = loadOrders();
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, character => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[character]);
+      }
+      function yen(value) { return `¥${Math.round(value).toLocaleString("ja-JP")}`; }
+      function showNotice(message, isError = false) {
+        noticeElement.textContent = message;
+        if (isError) noticeElement.setAttribute("role", "alert");
+        else noticeElement.removeAttribute("role");
+      }
+      function loadOrders() {
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (!stored) return [];
+          const parsed = JSON.parse(stored);
+          if (!Array.isArray(parsed)) throw new Error("注文データの形式が正しくありません。");
+          return parsed;
+        } catch (error) {
+          showNotice(`注文履歴を読み込めませんでした（${error.message}）`, true);
+          return [];
+        }
+      }
+      function saveOrders() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+          noticeElement.textContent = "";
+          noticeElement.removeAttribute("role");
+        } catch (error) {
+          showNotice(`注文を保存できませんでした。ブラウザーの保存領域を確認してください（${error.message}）`, true);
+          return false;
+        }
+        return true;
+      }
+      function availableCount(item) {
+        return cart.get(item.id)?.quantity || 0;
+      }
+      function ensureCartItem(item) {
+        if (!cart.has(item.id)) cart.set(item.id, { quantity: 0, options: {} });
+        return cart.get(item.id);
+      }
+      function getBasePrice(item) {
+        return memberPricing && Number.isFinite(item.memberPrice) ? item.memberPrice : item.price;
+      }
+      function renderOptions(item) {
+        return (item.options || []).map((option, index) => {
+          const value = cart.get(item.id)?.options[index] || (option.kind === "select" ? "" : 0);
+          if (option.kind === "select") {
+            return `<label class="option-control">${escapeHtml(option.name)}
+              <select data-option-select="${item.id}:${index}"><option value="">選択</option>${option.choices.map(choice => `<option value="${escapeHtml(choice)}" ${String(value) === choice ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}</select>
+            </label>`;
+          }
+          const count = Math.min(Number(value) || 0, availableCount(item));
+          const options = Array.from({ length: availableCount(item) + 1 }, (_, optionCount) =>
+            `<option value="${optionCount}" ${count === optionCount ? "selected" : ""}>${optionCount === 0 ? "なし" : `${optionCount}個`}</option>`
+          ).join("");
+          return `<label class="option-control">${escapeHtml(option.name)}　+${yen(option.price)} / 個
+            <select data-option-select="${item.id}:${index}" aria-label="${escapeHtml(option.name)} +${yen(option.price)} / 個">${options}</select>
+          </label>`;
+        }).join("");
+      }
+      function renderMenu() {
+        const categories = [...new Set(MENU.map(item => item.category))];
+        document.getElementById("categoryNav").innerHTML = categories.map((category, index) =>
+          `<a href="#category-${index}">${escapeHtml(category)}</a>`
+        ).join("");
+        menuElement.innerHTML = categories.map((category, categoryIndex) => {
+          const items = MENU.filter(item => item.category === category);
+          return `<section class="menu-section" id="category-${categoryIndex}">
+            <h2>${escapeHtml(category)}</h2>
+            <div class="menu-grid">${items.map(item => {
+              const count = availableCount(item);
+              const price = getBasePrice(item);
+              return `<article class="menu-card">
+                <div class="menu-card-head"><span class="menu-emoji" aria-hidden="true">${item.emoji || ""}</span><span class="menu-name">${escapeHtml(item.name)}</span></div>
+                <div class="price-line"><strong>${yen(price)}</strong>${memberPricing && item.memberPrice !== undefined ? `<span class="regular-price">${yen(item.price)}</span><span>会員価格</span>` : ""}</div>
+                ${renderOptions(item)}
+                <div class="quantity">
+                  <button type="button" data-quantity="-1" data-id="${item.id}" aria-label="${escapeHtml(item.name)}を1個減らす" ${count === 0 ? "disabled" : ""}>−</button>
+                  <span class="quantity-value" aria-live="polite">${count}</span>
+                  <button type="button" data-quantity="1" data-id="${item.id}" aria-label="${escapeHtml(item.name)}を1個追加">＋</button>
+                </div>
+              </article>`;
+            }).join("")}</div>
+          </section>`;
+        }).join("");
+      }
+      function calculateTotal() {
+        return MENU.reduce((sum, item) => {
+          const entry = cart.get(item.id);
+          if (!entry) return sum;
+          const optionTotal = (item.options || []).reduce((optionSum, option, index) =>
+            optionSum + (option.kind === "quantity" ? (Number(entry.options[index]) || 0) * option.price : 0), 0);
+          return sum + entry.quantity * getBasePrice(item) + optionTotal;
+        }, 0);
+      }
+      function calculateItemCount() {
+        return [...cart.values()].reduce((sum, entry) => sum + entry.quantity, 0);
+      }
+      function renderCart() {
+        const count = calculateItemCount();
+        const people = adultCount + childCount;
+        document.getElementById("cartTotal").textContent = yen(calculateTotal());
+        document.getElementById("cartMeta").textContent = `${count}品 ・ ${people}名`;
+        const submit = document.getElementById("submitOrder");
+        submit.disabled = count === 0;
+        submit.innerHTML = count ? `注文を送信<span>${count}品 ・ 内容をご確認ください</span>` : `注文を送信<span>メニューをお選びください</span>`;
+      }
+      function renderHistory() {
+        const history = orders.filter(order => String(order.table) === String(table)).sort((first, second) => Number(first.t) - Number(second.t));
+        const container = document.getElementById("orderHistory");
+        if (!history.length) {
+          container.innerHTML = `<div class="history-empty">このテーブルの注文はまだありません。</div>`;
+          return;
+        }
+        container.innerHTML = history.map(order => {
+          const status = order.paid ? "会計済み" : order.status === "preparing" ? "調理中" : order.status === "served" ? "提供済み" : "受付済み";
+          const timer = !order.paid && order.status !== "served" ? `<div class="order-timer">お届けまで <span class="timer" data-start="${Number(order.t)}"></span></div>` : "";
+          const call = order.callCustomerAt ? `<div class="order-time" role="alert" style="color:var(--amber)">カウンターへお越しください</div>` : "";
+          const total = order.items.reduce((sum, item) => sum + (Number(item.p) || 0) * Math.max(0, Number(item.q) - (Number(item.cancelledQty) || 0)), 0);
+          return `<article class="order-row">
+            <div class="order-details"><strong>注文 #${escapeHtml(order.id)}</strong>
+              <div class="order-items">${order.items.map(item => `${escapeHtml(item.n)} × ${Math.max(0, Number(item.q) - (Number(item.cancelledQty) || 0))}`).join("、")}</div>
+              <div class="order-time">${escapeHtml(new Date(order.t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))} ・ ${yen(total)}</div>
+              ${call}${timer}
+            </div>
+            <span class="order-status ${order.paid ? "paid" : order.status === "preparing" ? "preparing" : order.status === "served" ? "served" : ""}">${status}</span>
+          </article>`;
+        }).join("");
+        updateTimers();
+      }
+      function render() {
+        document.getElementById("tableTitle").textContent = `Table ${table}`;
+        document.getElementById("guestCount").textContent = `${adultCount + childCount}名でご利用`;
+        renderMenu();
+        renderCart();
+        renderHistory();
+      }
+      function updateTimers() {
+        document.querySelectorAll(".timer").forEach(element => {
+          const elapsed = Math.max(0, Date.now() - Number(element.dataset.start));
+          const remaining = Math.max(0, 20 * 60 * 1000 - elapsed);
+          element.textContent = remaining
+            ? `${String(Math.floor(remaining / 60000)).padStart(2, "0")}:${String(Math.floor(remaining / 1000) % 60).padStart(2, "0")}`
+            : "まもなく";
+        });
+      }
+      function updateCallout() {
+        const pendingCalls = orders.filter(order => String(order.table) === String(table) && !order.paid && order.callCustomerAt);
+        const callout = document.getElementById("customerCall");
+        callout.classList.toggle("visible", pendingCalls.length > 0);
+        document.getElementById("callList").innerHTML = pendingCalls.map(order =>
+          `<div>スタッフからの呼び出し（注文 #${escapeHtml(order.id)}） <button type="button" data-speak-call="${escapeHtml(order.id)}">音声でもう一度聞く</button></div>`
+        ).join("");
+      }
+      function announceCall() {
+        if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+          showNotice("この端末は音声読み上げに対応していません。画面の呼び出し表示をご確認ください。", true);
+          return;
+        }
+        const utterance = new SpeechSynthesisUtterance(`テーブル${table}のお客様、カウンターまでお越しください。`);
+        utterance.lang = "ja-JP";
+        const voice = speechSynthesis.getVoices().find(candidate => candidate.lang.toLowerCase().startsWith("ja"));
+        if (voice) utterance.voice = voice;
+        speechSynthesis.cancel();
+        speechSynthesis.speak(utterance);
+      }
+      function applyOrders(value) {
+        try {
+          const updated = JSON.parse(value);
+          if (!Array.isArray(updated)) throw new Error("注文データの形式が正しくありません。");
+          orders = updated;
+          renderHistory();
+          updateCallout();
+        } catch (error) {
+          showNotice(`注文情報を更新できませんでした（${error.message}）`, true);
+        }
+      }
+      function addToCart(id, delta) {
+        const item = MENU.find(entry => entry.id === Number(id));
+        if (!item) return;
+        const entry = ensureCartItem(item);
+        entry.quantity = Math.max(0, Math.min(99, entry.quantity + Number(delta)));
+        if (!entry.quantity) cart.delete(item.id);
+        else (item.options || []).forEach((option, index) => {
+          if (option.kind === "quantity") entry.options[index] = Math.min(Number(entry.options[index]) || 0, entry.quantity);
+        });
+        render();
+      }
+      function sendOrder() {
+        const lines = [];
+        MENU.forEach(item => {
+          const entry = cart.get(item.id);
+          if (!entry || entry.quantity <= 0) return;
+          let regularQuantity = entry.quantity;
+          const optionLines = [];
+          (item.options || []).forEach((option, index) => {
+            if (option.kind !== "quantity") return;
+            const quantity = Math.min(regularQuantity, Number(entry.options[index]) || 0);
+            regularQuantity -= quantity;
+            if (quantity > 0) optionLines.push({ n: `${item.name}（${option.name}）`, p: getBasePrice(item) + option.price, q: quantity });
+          });
+          if (regularQuantity > 0) lines.push({ n: item.name, p: getBasePrice(item), q: regularQuantity });
+          lines.push(...optionLines);
+          const spice = (item.options || []).find((option, index) => option.name === "辛さ" && entry.options[index]);
+          if (spice) {
+            const regularLine = lines.findLast ? lines.findLast(line => line.n === item.name) : [...lines].reverse().find(line => line.n === item.name);
+            if (regularLine) regularLine.n += `（辛さ ${entry.options[(item.options || []).indexOf(spice)]}）`;
+          }
+        });
+        if (!lines.length) return;
+        if (receiptNeeded && !document.getElementById("receiptName").value.trim()) {
+          showNotice("領収書の宛名を入力してください。", true);
+          document.getElementById("receiptName").focus();
+          return;
+        }
+        const order = {
+          id: `C-${Date.now()}`,
+          table,
+          t: Date.now(),
+          adultCount,
+          childCount,
+          guestType,
+          allergy,
+          status: "new",
+          paid: false,
+          kitchenPrinted: false,
+          items: lines
+        };
+        const receiptName = receiptNeeded ? document.getElementById("receiptName").value.trim() : "";
+        if (receiptName) order.receiptName = receiptName;
+        const previousOrders = orders;
+        orders = [...orders, order];
+        if (!saveOrders()) {
+          orders = previousOrders;
+          render();
+          return;
+        }
+        cart.clear();
+        receiptNeeded = false;
+        document.getElementById("receiptToggle").checked = false;
+        document.getElementById("receiptName").value = "";
+        document.getElementById("receiptNameField").hidden = true;
+        showNotice(`ご注文を受け付けました。注文番号：${order.id}`);
+        render();
+        document.getElementById("historyTitle").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      for (let number = 1; number <= 40; number += 1) {
+        tableSelect.add(new Option(String(number), String(number)));
+      }
+      for (let number = 1; number <= 10; number += 1) adultSelect.add(new Option(String(number), String(number), false, number === 2));
+      for (let number = 0; number <= 9; number += 1) childSelect.add(new Option(String(number), String(number), false, number === 0));
+
+      const tableFromHash = location.hash.match(/(?:^#|[?&])t=(\d+)/);
+      if (tableFromHash) table = Math.min(40, Math.max(1, Number(tableFromHash[1]) || 1));
+      tableSelect.value = String(table);
+      tableSelect.addEventListener("change", () => { table = Number(tableSelect.value); render(); });
+      document.getElementById("genderSelect").addEventListener("change", event => { guestType = event.target.value; });
+      adultSelect.addEventListener("change", () => { adultCount = Number(adultSelect.value); render(); });
+      childSelect.addEventListener("change", () => { childCount = Number(childSelect.value); render(); });
+      document.getElementById("allergySelect").addEventListener("change", event => { allergy = event.target.value; });
+      document.getElementById("memberToggle").addEventListener("change", event => { memberPricing = event.target.checked; render(); });
+      document.getElementById("receiptToggle").addEventListener("change", event => {
+        receiptNeeded = event.target.checked;
+        document.getElementById("receiptNameField").hidden = !receiptNeeded;
+      });
+      menuElement.addEventListener("click", event => {
+        const button = event.target.closest("button[data-quantity]");
+        if (button) addToCart(button.dataset.id, button.dataset.quantity);
+      });
+      menuElement.addEventListener("change", event => {
+        const select = event.target.closest("select[data-option-select]");
+        if (!select) return;
+        const [itemId, optionIndex] = select.dataset.optionSelect.split(":").map(Number);
+        const item = MENU.find(entry => entry.id === itemId);
+        if (!item) return;
+        const entry = ensureCartItem(item);
+        entry.options[optionIndex] = item.options[optionIndex].kind === "quantity" ? Number(select.value) : select.value;
+        render();
+      });
+      document.getElementById("submitOrder").addEventListener("click", sendOrder);
+      document.getElementById("callList").addEventListener("click", event => {
+        if (event.target.closest("button[data-speak-call]")) announceCall();
+      });
+      window.addEventListener("storage", event => {
+        if (event.key === STORAGE_KEY && event.newValue) applyOrders(event.newValue);
+      });
+      try {
+        const savedOrders = localStorage.getItem(STORAGE_KEY);
+        if (savedOrders) applyOrders(savedOrders);
+      } catch (error) {
+        showNotice(`注文履歴を読み込めませんでした（${error.message}）`, true);
+      }
+      render();
+      setInterval(updateTimers, 1000);
+    })();
+  </script>
+</body>
+</html>
