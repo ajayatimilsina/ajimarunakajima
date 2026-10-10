@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=../index.html">
+  <meta http-equiv="refresh" content="0; url=../customer.html">
   <title>あじまるや | ご注文</title>
 </head>
 <body>
-  <p><a id="customerLink" href="../index.html">ご注文ページへ</a></p>
+  <p><a href="../customer.html">ご注文ページへ</a></p>
   <script>
-    const destination = new URL("../index.html", location.href);
+    const destination = new URL("../customer.html", location.href);
     destination.search = location.search;
     destination.hash = location.hash;
     location.replace(destination.href);
